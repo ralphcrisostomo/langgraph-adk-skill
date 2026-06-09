@@ -5,7 +5,7 @@ import { SYSTEM, type ChatMsg } from '../session-core';
 
 export const pingLlm: Action = {
   name: 'ping-llm',
-  description: 'Interactive chat session with the configured model (Ink UI; Ctrl+C or /exit to quit; trims old turns to fit context)',
+  description: 'Interactive chat session with the model',
   params: [],
   run: async (_values, ctx) => {
     if (!process.stdout.isTTY) {

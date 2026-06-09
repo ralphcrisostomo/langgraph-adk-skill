@@ -15,7 +15,7 @@ export function oneShotInput(argv: Record<string, unknown>): string | undefined 
 // supplied, otherwise an interactive Ink session with a pinned context footer.
 export const assistant: Action = {
   name: 'assistant',
-  description: 'Ask the model: pass --input "…" for a one-shot answer, or run with no input for an interactive Ink session (Ctrl+C or /exit to quit)',
+  description: 'Ask the model (one-shot with --input, else a session)',
   params: [], // mode is chosen at runtime: --input -> one-shot, otherwise session
   run: async (_values, ctx) => {
     const ask = async (messages: ChatMsg[]) => {
