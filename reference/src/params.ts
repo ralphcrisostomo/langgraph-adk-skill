@@ -81,7 +81,7 @@ export async function selectAction(
   }
   const answer = await prompt([
     {
-      type: 'list',
+      type: 'select',
       name: 'action',
       message: 'Choose an action',
       choices: actions.map((a) => ({ name: `${a.name} — ${a.description}`, value: a.name })),

@@ -5,7 +5,7 @@ import type { ChalkInstance } from 'chalk';
 export interface ParamDef {
   name: string;
   message: string;                 // inquirer prompt text
-  type?: 'input' | 'number' | 'confirm' | 'list';
+  type?: 'input' | 'number' | 'confirm' | 'select';
   choices?: unknown[];
   required?: boolean;
   default?: unknown;
