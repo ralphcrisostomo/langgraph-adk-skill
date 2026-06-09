@@ -24,6 +24,20 @@ export function trimHistory(
   return { kept, dropped };
 }
 
+// Compact token count for display (3200 -> "3.2k").
+function fmtTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+// ccstatusline-style usage bar, e.g. "Context: [█████░░░░░] 2.0k/8.0k (25%)".
+// `max` is the history token budget — when usage hits ~100%, oldest turns are trimmed.
+export function contextBar(used: number, max: number, width = 20): string {
+  const ratio = max > 0 ? Math.min(1, used / max) : 0;
+  const filled = Math.round(ratio * width);
+  const bar = '█'.repeat(filled) + '░'.repeat(width - filled);
+  return `Context: [${bar}] ${fmtTokens(used)}/${fmtTokens(max)} (${Math.round(ratio * 100)}%)`;
+}
+
 const SYSTEM: ChatMsg = { role: 'system', content: 'You are a helpful, concise assistant.' };
 const MAX_HISTORY_TOKENS = Number(process.env.PING_MAX_HISTORY_TOKENS ?? 8000);
 const QUIT_WORDS = new Set(['/exit', '/quit', 'exit', 'quit']);
@@ -35,12 +49,15 @@ export interface SessionIO {
   onReply: (text: string) => void;
   onInfo: (text: string) => void;
   onError: (text: string) => void;
+  onContext?: (used: number, max: number) => void;  // optional usage indicator, per turn
 }
 
 // Drives a multi-turn chat session, trimming old turns to stay under `maxTokens`.
 // Returns when the user quits (Ctrl+C -> ExitPromptError, or a /exit word).
 export async function runSession(io: SessionIO, maxTokens: number): Promise<ChatMsg[]> {
   const history: ChatMsg[] = [];
+  const usedTokens = () =>
+    history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(SYSTEM.content));
 
   while (true) {
     let userText: string;
@@ -71,9 +88,18 @@ export async function runSession(io: SessionIO, maxTokens: number): Promise<Chat
       io.onError(err instanceof Error ? err.message : String(err));
       history.pop(); // drop the user message whose call failed so we can retry cleanly
     }
+
+    io.onContext?.(usedTokens(), maxTokens);
   }
 
   return history;
+}
+
+// Renders the context usage bar, colored by how full the window is.
+function logContext(ctx: { log: any }, used: number, max: number): void {
+  const ratio = max > 0 ? used / max : 0;
+  const color = ratio < 0.7 ? ctx.log.green : ratio < 0.9 ? ctx.log.yellow : ctx.log.red;
+  console.log(color(contextBar(used, max)));
 }
 
 export const pingLlm: Action = {
@@ -102,6 +128,7 @@ export const pingLlm: Action = {
       onReply: (text) => console.log(`${ctx.log.bold('assistant ›')} ${text}\n`),
       onInfo: (text) => console.log(ctx.log.dim(`  ${text}`)),
       onError: (text) => console.log(ctx.log.red(`model error: ${text}`)),
+      onContext: (used, max) => logContext(ctx, used, max),
     };
 
     await runSession(io, MAX_HISTORY_TOKENS);

@@ -1,5 +1,5 @@
 import type { Action } from './_types';
-import { runSession, type SessionIO, type ChatMsg } from './ping-llm';
+import { runSession, contextBar, type SessionIO, type ChatMsg } from './ping-llm';
 import inquirer from 'inquirer';
 import minimist from 'minimist';
 
@@ -52,6 +52,11 @@ export const assistant: Action = {
       onReply: (text) => console.log(`${ctx.log.bold('assistant ›')} ${text}\n`),
       onInfo: (text) => console.log(ctx.log.dim(`  ${text}`)),
       onError: (text) => console.log(ctx.log.red(`error: ${text}`)),
+      onContext: (used, max) => {
+        const ratio = max > 0 ? used / max : 0;
+        const color = ratio < 0.7 ? ctx.log.green : ratio < 0.9 ? ctx.log.yellow : ctx.log.red;
+        console.log(color(contextBar(used, max)));
+      },
     };
 
     await runSession(io, MAX_HISTORY_TOKENS);

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { pingLlm, trimHistory, estimateTokens, runSession, type ChatMsg, type SessionIO } from '../src/actions/ping-llm';
+import { pingLlm, trimHistory, estimateTokens, runSession, contextBar, type ChatMsg, type SessionIO } from '../src/actions/ping-llm';
 
 test('ping-llm is a parameterless interactive session action', () => {
   expect(pingLlm.name).toBe('ping-llm');
@@ -38,6 +38,7 @@ function scriptedIO(lines: string[], ctrlCAfter = false) {
   const replies: string[] = [];
   const infos: string[] = [];
   const invoked: ChatMsg[][] = [];
+  const contexts: Array<[number, number]> = [];
   let i = 0;
   const io: SessionIO = {
     ask: async () => {
@@ -56,9 +57,26 @@ function scriptedIO(lines: string[], ctrlCAfter = false) {
     onReply: (t) => replies.push(t),
     onInfo: (t) => infos.push(t),
     onError: () => {},
+    onContext: (used, max) => contexts.push([used, max]),
   };
-  return { io, replies, infos, invoked };
+  return { io, replies, infos, invoked, contexts };
 }
+
+test('contextBar renders a proportional ccstatusline-style usage bar', () => {
+  const s = contextBar(2000, 8000, 20); // 25%
+  expect(s).toContain('2.0k/8.0k');
+  expect(s).toContain('(25%)');
+  expect(s).toContain('█'.repeat(5));   // 25% of width 20 = 5 filled
+  expect(s).toContain('░');             // and some empty
+});
+
+test('runSession reports context usage after each turn (used grows, max fixed)', async () => {
+  const { io, contexts } = scriptedIO(['hello', 'again'], true);
+  await runSession(io, 9999);
+  expect(contexts).toHaveLength(2);
+  expect(contexts.every(([, max]) => max === 9999)).toBe(true);
+  expect(contexts[1]![0]).toBeGreaterThan(contexts[0]![0]);
+});
 
 test('runSession runs multiple turns and feeds full history back to the model', async () => {
   const { io, replies, invoked } = scriptedIO(['hello', 'again'], true);

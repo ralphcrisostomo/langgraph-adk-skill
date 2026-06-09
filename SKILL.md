@@ -55,11 +55,12 @@ Run the architect interview (Step 3) and append exactly one action.
    - **single-turn** (one-shot) — one request in → one answer out → exits. The
      default; keeps nothing between runs.
    - **multi-turn** (interactive session / REPL) — loops, keeps conversation
-     history, quits on **Ctrl+C** (inquirer's `ExitPromptError`) or `/exit`, and
-     trims the oldest turns when history outgrows a token budget. Wrap the action
-     body in the `runSession` loop — copy the pattern from the seed action
-     `src/actions/ping-llm.ts` (it exports `runSession`, `trimHistory`, and the
-     `SessionIO` seam).
+     history, quits on **Ctrl+C** (inquirer's `ExitPromptError`) or `/exit`, trims
+     the oldest turns when history outgrows a token budget, and shows a
+     ccstatusline-style usage bar each turn (`SessionIO.onContext` + `contextBar`).
+     Wrap the action body in the `runSession` loop — copy the pattern from the seed
+     action `src/actions/ping-llm.ts` (it exports `runSession`, `trimHistory`,
+     `contextBar`, and the `SessionIO` seam).
    - **both** — run one-shot when the input is supplied via flags (e.g.
      `--input ...`), otherwise start a session; or offer an inquirer `select`
      ("Run once" vs "Start a session") at startup. Reuse the same `runSession`
@@ -111,8 +112,9 @@ Run the architect interview (Step 3) and append exactly one action.
 - The `Ctx` gives every action `{ llm, log (chalk), spinner (ora), getDocs }`.
 - Verbose by default: agent runs stream through `runGraphVerbose`.
 - Turn shape: single-turn actions return after one run; multi-turn actions loop
-  via `runSession` (quit on Ctrl+C / `/exit`, history trimmed to a token budget).
-  `ping-llm` is the reference multi-turn action.
+  via `runSession` (quit on Ctrl+C / `/exit`, history trimmed to a token budget,
+  per-turn context usage bar via `onContext`/`contextBar`). `ping-llm` is the
+  reference multi-turn action.
 - Keep each file focused; one action per file.
 
 ## Templates
