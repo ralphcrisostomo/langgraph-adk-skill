@@ -1,6 +1,6 @@
 import type { Action } from './_types';
-import { pingLlm } from './ping-llm';
+import { chat } from './chat';
 import { assistant } from './assistant';
 
 // Registry: the skill appends new actions here when adding one.
-export const actions: Action[] = [pingLlm, assistant];
+export const actions: Action[] = [chat, assistant];

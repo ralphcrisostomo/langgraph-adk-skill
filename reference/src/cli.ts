@@ -19,7 +19,7 @@ export async function runCli(argv: Record<string, unknown>): Promise<void> {
   const getDocs = async (_query: string): Promise<string> => {
     throw new Error('getDocs is a wiring point — connect context7 here');
   };
-  const ctx: Ctx = { llm, log: chalk, getDocs, contextWindow };
+  const ctx: Ctx = { llm, log: chalk, getDocs, contextWindow, model: config.model };
 
   try {
     const action = await selectAction(actions, argv);

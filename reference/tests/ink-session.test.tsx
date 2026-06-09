@@ -5,11 +5,14 @@ import type { ChatMsg } from '../src/session-core';
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-test('Ink SessionApp renders the pinned context bar and input prompt', () => {
+test('Ink SessionApp renders the model line, pinned context bar and input prompt', () => {
   const respond = async () => 'hi';
-  const { lastFrame, unmount } = render(<SessionApp contextWindow={16000} respond={respond} />);
+  const { lastFrame, unmount } = render(
+    <SessionApp contextWindow={16000} model="acme/test-model" respond={respond} />,
+  );
   const frame = lastFrame() ?? '';
   try {
+    expect(frame).toContain('Model: acme/test-model');
     expect(frame).toContain('Context: [');
     expect(frame).toContain('/16.0k');
     expect(frame).toContain('you ›');
@@ -25,7 +28,7 @@ test('Ink SessionApp runs a turn: shows the reply and updates the context bar', 
     return 'four';
   };
   const { stdin, lastFrame, unmount } = render(
-    <SessionApp contextWindow={16000} respond={respond} promptLabel="you" />,
+    <SessionApp contextWindow={16000} model="acme/test-model" respond={respond} promptLabel="you" />,
   );
   try {
     stdin.write('2+2?');

@@ -3,13 +3,13 @@ import { render } from 'ink';
 import { SessionApp } from '../ink/SessionApp';
 import { SYSTEM, type ChatMsg } from '../session-core';
 
-export const pingLlm: Action = {
-  name: 'ping-llm',
+export const chat: Action = {
+  name: 'chat',
   description: 'Interactive chat session with the model',
   params: [],
   run: async (_values, ctx) => {
     if (!process.stdout.isTTY) {
-      console.log(ctx.log.yellow('ping-llm needs an interactive terminal (TTY).'));
+      console.log(ctx.log.yellow('chat needs an interactive terminal (TTY).'));
       return;
     }
 
@@ -18,7 +18,9 @@ export const pingLlm: Action = {
       return typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
     };
 
-    const app = render(<SessionApp contextWindow={ctx.contextWindow} respond={respond} promptLabel="you" />);
+    const app = render(
+      <SessionApp contextWindow={ctx.contextWindow} model={ctx.model} respond={respond} promptLabel="you" />,
+    );
     await app.waitUntilExit();
   },
 };

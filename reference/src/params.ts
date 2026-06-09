@@ -59,9 +59,11 @@ export async function selectAction(actions: Action[], flags: Record<string, unkn
     if (!found) throw new Error(`Unknown action: ${flags.action}`);
     return found;
   }
+  // Pad names to a common width so the descriptions line up in a column.
+  const nameWidth = Math.max(...actions.map((a) => a.name.length));
   const name = await selectMenu(
     'Choose an action',
-    actions.map((a) => ({ label: `${a.name} — ${a.description}`, value: a.name })),
+    actions.map((a) => ({ label: `${a.name.padEnd(nameWidth)}  —  ${a.description}`, value: a.name })),
   );
   return actions.find((a) => a.name === name)!;
 }

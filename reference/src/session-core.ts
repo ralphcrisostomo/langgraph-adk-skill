@@ -38,6 +38,12 @@ function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
+// ccstatusline-style model line shown directly above the context bar, e.g.
+// "Model: google/gemma-4-26B-A4B-it".
+export function modelLine(model: string): string {
+  return `Model: ${model}`;
+}
+
 // ccstatusline-style usage bar, e.g. "Context: [█████░░░░░] 4.0k/16.4k (25%)".
 // `max` is the model's real context window (oldest turns are trimmed before it fills).
 export function contextBar(used: number, max: number, width = 20): string {
@@ -53,10 +59,17 @@ export function usedTokens(history: ChatMsg[]): number {
 }
 
 // MANDATORY context indicator for one-shot LLM actions (multi-turn sessions show
-// it live in <SessionApp>). Prints the usage bar for `messages`, colored by fullness.
-export function printContextBar(log: ChalkInstance, contextWindow: number, messages: ChatMsg[]): void {
+// it live in <SessionApp>). Prints the model line plus the usage bar for `messages`,
+// the bar colored by fullness.
+export function printContextBar(
+  log: ChalkInstance,
+  contextWindow: number,
+  messages: ChatMsg[],
+  model: string,
+): void {
   const used = messages.reduce((n, m) => n + estimateTokens(m.content), 0);
   const ratio = contextWindow > 0 ? used / contextWindow : 0;
   const color = ratio < 0.7 ? log.green : ratio < 0.9 ? log.yellow : log.red;
+  console.log(log.dim(modelLine(model)));
   console.log(color(contextBar(used, contextWindow)));
 }

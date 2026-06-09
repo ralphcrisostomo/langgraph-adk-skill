@@ -47,7 +47,7 @@ my-cli/
     actions/
       _types.ts           # Action / ParamDef / Ctx contract
       index.ts            # explicit action registry
-      ping-llm.ts         # demo action; `bun run start` works immediately
+      chat.tsx            # demo action; `bun run start` works immediately
 ```
 
 Run it: `bun run start` (interactive) or `bun run start --action <name> --flag value`.

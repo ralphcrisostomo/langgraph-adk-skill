@@ -16,6 +16,7 @@ export interface Ctx {
   log: ChalkInstance;
   getDocs: (query: string) => Promise<string>;
   contextWindow: number; // model's real context window in tokens (resolved at startup)
+  model: string; // model id (for the ccstatusline-style "Model:" footer line)
 }
 
 export interface Action {

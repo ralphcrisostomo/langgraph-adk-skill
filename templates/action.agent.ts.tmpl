@@ -48,10 +48,10 @@ export const {{ACTION_CAMEL}}: Action = {
     const text = typeof final === 'string' ? final : JSON.stringify(final);
     console.log(ctx.log.bold(text));
 
-    // MANDATORY for LLM-using actions: surface context usage.
+    // MANDATORY for LLM-using actions: surface the model id + context usage.
     printContextBar(ctx.log, ctx.contextWindow, [
       { role: 'user', content: String(values.input) },
       { role: 'assistant', content: text },
-    ]);
+    ], ctx.model);
   },
 };

@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import TextInput from 'ink-text-input';
-import { contextBar, historyBudget, QUIT_WORDS, trimHistory, usedTokens, type ChatMsg } from '../session-core';
+import { contextBar, historyBudget, modelLine, QUIT_WORDS, trimHistory, usedTokens, type ChatMsg } from '../session-core';
 
 // Helpers a responder can use mid-turn: stream a step line, or ask the human a question.
 export interface RespondHelpers {
@@ -12,6 +12,8 @@ export interface RespondHelpers {
 
 export interface SessionAppProps {
   contextWindow: number;
+  // Model id shown in the footer's "Model:" line (ccstatusline-style).
+  model: string;
   // One turn: given the running history, produce the assistant's reply text.
   respond: (messages: ChatMsg[], helpers: RespondHelpers) => Promise<string>;
   promptLabel?: string;
@@ -25,7 +27,7 @@ interface Line {
 }
 
 // Ink chat UI: history scrolls in <Static> above a pinned footer (context bar + input).
-export function SessionApp({ contextWindow, respond, promptLabel = 'you', intro }: SessionAppProps) {
+export function SessionApp({ contextWindow, model, respond, promptLabel = 'you', intro }: SessionAppProps) {
   const { exit } = useApp();
   const [lines, setLines] = useState<Line[]>([]);
   const [input, setInput] = useState('');
@@ -144,6 +146,7 @@ export function SessionApp({ contextWindow, respond, promptLabel = 'you', intro 
             />
           </Box>
         )}
+        <Text dimColor>{modelLine(model)}</Text>
         <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
       </Box>
     </>

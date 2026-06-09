@@ -33,7 +33,7 @@ Check the target directory for `src/actions/index.ts`:
    `bun add langchain @langchain/langgraph @langchain/openai @langchain/anthropic @langchain/core zod minimist chalk ink react @inkjs/ui ink-text-input ink-spinner`
    and `bun add -d typescript bun-types @types/minimist @types/react ink-testing-library`
    (this also pins the `*` versions in package.json).
-4. Confirm it runs: `bun run start --list` (should list `ping-llm`).
+4. Confirm it runs: `bun run start --list` (should list `chat`).
 5. Tell the user how to configure `.env` and run `bun run start`.
 6. Then proceed to Step 3 to add their first real action (one run = one action).
 
@@ -55,12 +55,13 @@ Run the architect interview (Step 3) and append exactly one action.
    - **single-turn** (one-shot) — one request in → one answer out → exits. The
      default; keeps nothing between runs.
    - **multi-turn** (interactive session / REPL) — render the Ink `<SessionApp>`
-     (`src/ink/SessionApp.tsx`): a pinned footer with a ccstatusline-style usage bar
+     (`src/ink/SessionApp.tsx`): a pinned footer with a ccstatusline-style `Model:`
+     line above a usage bar
      (vs the model's **real** `ctx.contextWindow`, resolved by `src/model-info.ts`
      from the provider's `/models` endpoint with a `MODEL_CONTEXT_TOKENS` env
      fallback), history trimming, and quit on **Ctrl+C** or `/exit`. Pass
      `respond(messages, { onStep, ask })` for one turn — `ask` is the human-in-the-loop
-     seam. The action file is `.tsx`. Copy the seed `src/actions/ping-llm.tsx`; pure
+     seam. The action file is `.tsx`. Copy the seed `src/actions/chat.tsx`; pure
      helpers live in `src/session-core.ts`.
    - **both** — run one-shot when the input is supplied via flags (e.g.
      `--input ...`), otherwise render the `<SessionApp>`; or offer an Ink
@@ -105,6 +106,19 @@ Run the architect interview (Step 3) and append exactly one action.
 8. **Register it.** Add an import and append to the `actions` array in
    `src/actions/index.ts`.
 9. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
+10. **Gate completion with a Codex review (MANDATORY).** Implementation is NOT done
+    until the diff has been reviewed by Codex. Capture the pre-work commit first
+    (`git rev-parse --short HEAD` BEFORE you start editing), then after verification
+    passes, emit this exact copy-paste line for the user (substitute the captured
+    SHA) and stop — do not declare the work complete until the review is run:
+
+    ```
+    /codex:review --base=<short-sha> --wait
+    ```
+
+    `<short-sha>` is the short commit SHA the work started from (the review diffs
+    everything since that commit). Address any review findings, then re-emit the
+    line if you make further changes.
 
 ## Conventions you MUST keep
 
@@ -113,17 +127,24 @@ Run the architect interview (Step 3) and append exactly one action.
   work in `withSpinner`. `ctx.log` is still chalk for plain colored output.
 - Parameters are declarative `ParamDef[]`. minimist flags fill them; `resolveParams`
   Ink-prompts only for what is missing. Never hand-roll prompt plumbing in an action.
-- The `Ctx` gives every action `{ llm, log (chalk), getDocs, contextWindow }`.
+- The "Choose an action" menu (`selectAction` in `src/params.ts`) pads each action
+  name to the longest name's width (`padEnd`) before the `—` so descriptions line up
+  in a column. Keep that alignment when editing the menu label.
+- The `Ctx` gives every action `{ llm, log (chalk), getDocs, contextWindow, model }`.
 - Agent runs stream node/tool steps via `streamAgent` (from `src/trace.ts`).
-- **Mandatory context bar**: any action that calls the LLM MUST surface context
-  usage — multi-turn via `<SessionApp>` (live footer), one-shot via
-  `printContextBar(ctx.log, ctx.contextWindow, messages)` (from `src/session-core.ts`).
-  The action templates include it by default.
+- **Mandatory model + context bar**: any action that calls the LLM MUST surface the
+  model id and context usage — multi-turn via `<SessionApp>` (live footer: a `Model:`
+  line above the bar), one-shot via
+  `printContextBar(ctx.log, ctx.contextWindow, messages, ctx.model)` (from
+  `src/session-core.ts`). The action templates include it by default.
 - Turn shape: single-turn actions return after one run; multi-turn actions are
   `.tsx` and render the Ink `<SessionApp>` (pinned context footer; bar shows usage
   vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;
-  `ping-llm` is the reference multi-turn action.
+  `chat` is the reference multi-turn action.
 - Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
+- **Codex review gates completion**: never call the implementation done until a
+  Codex review of the diff has run. After verification, emit the copy-paste line
+  `/codex:review --base=<short-sha> --wait` (with the pre-work short SHA) and wait.
 
 ## Templates
 
@@ -131,7 +152,7 @@ Run the architect interview (Step 3) and append exactly one action.
   `src/ui.tsx` (Ink prompts + spinner), `src/session-core.ts` (pure session
   helpers), `src/ink/SessionApp.tsx` (pinned-footer chat UI), `src/trace.ts`
   (`streamAgent`), `src/model-info.ts` (context window).
-- `templates/src/actions/ping-llm.tsx` — seed action and reference **multi-turn
+- `templates/src/actions/chat.tsx` — seed action and reference **multi-turn
   Ink session**.
 - `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in
   (rename to `.tsx` when rendering Ink).

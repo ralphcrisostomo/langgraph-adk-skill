@@ -13,8 +13,8 @@ export const {{ACTION_CAMEL}}: Action = {
     // ctx.llm.invoke(...) for a single model call; wrap slow work in
     // withSpinner('working…', () => ...) for an Ink spinner; ctx.log (chalk) to print.
     //
-    // MANDATORY if this action calls the LLM: surface context usage after the call —
-    //   printContextBar(ctx.log, ctx.contextWindow, [...messages, { role: 'assistant', content: reply }]);
+    // MANDATORY if this action calls the LLM: surface the model id + context usage after the call —
+    //   printContextBar(ctx.log, ctx.contextWindow, [...messages, { role: 'assistant', content: reply }], ctx.model);
     // (Remove the import above if this action does NOT use the model.)
     //
     // For an interactive multi-turn loop, rename to .tsx and render
