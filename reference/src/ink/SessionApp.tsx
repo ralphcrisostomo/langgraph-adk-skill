@@ -124,9 +124,8 @@ export function SessionApp({ contextWindow, respond, promptLabel = 'you', intro 
         )}
       </Static>
 
-      {/* Pinned footer: context bar + input/spinner, always at the bottom. */}
+      {/* Pinned footer: input/spinner above, context bar pinned at the very bottom. */}
       <Box flexDirection="column" marginTop={1}>
-        <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
         {pendingAsk ? (
           <Box>
             <Text color="magenta">🧑 {pendingAsk.question} </Text>
@@ -145,6 +144,7 @@ export function SessionApp({ contextWindow, respond, promptLabel = 'you', intro 
             />
           </Box>
         )}
+        <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
       </Box>
     </>
   );
