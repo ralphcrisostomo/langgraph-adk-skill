@@ -63,7 +63,9 @@ Run the architect interview (Step 3) and append exactly one action.
    - **both** — run one-shot when the input is supplied via flags (e.g.
      `--input ...`), otherwise start a session; or offer an inquirer `select`
      ("Run once" vs "Start a session") at startup. Reuse the same `runSession`
-     loop — the one-shot path is a single turn through `io.invoke`.
+     loop — the one-shot path is a single turn through `io.invoke`. Worked
+     example: `reference/src/actions/assistant.ts` (`params: []`, branch on
+     `--input`).
 
    Turn shape is orthogonal to type: a Function or an Agent can be single- or
    multi-turn. For a multi-turn **agent**, each turn still streams through
