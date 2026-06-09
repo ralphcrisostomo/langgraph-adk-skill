@@ -30,8 +30,8 @@ Check the target directory for `src/actions/index.ts`:
    `.env.example`. Render `package.json.tmpl` → `package.json`, replacing
    `{{PROJECT_NAME}}`.
 3. From the target dir, run:
-   `bun add langchain @langchain/langgraph @langchain/openai @langchain/anthropic @langchain/core zod inquirer minimist chalk ora`
-   and `bun add -d typescript bun-types @types/minimist`
+   `bun add langchain @langchain/langgraph @langchain/openai @langchain/anthropic @langchain/core zod minimist chalk ink react @inkjs/ui ink-text-input ink-spinner`
+   and `bun add -d typescript bun-types @types/minimist @types/react ink-testing-library`
    (this also pins the `*` versions in package.json).
 4. Confirm it runs: `bun run start --list` (should list `ping-llm`).
 5. Tell the user how to configure `.env` and run `bun run start`.
@@ -51,29 +51,26 @@ Run the architect interview (Step 3) and append exactly one action.
      `action.function.ts.tmpl`.
    - **Agent** — needs tools, multi-step reasoning, or orchestration → continue.
 3. **Pick the turn shape.** Ask the user and present it as a single-select choice
-   (inquirer `select` style — offer these three options):
+   (an Ink `selectMenu` — offer these three options):
    - **single-turn** (one-shot) — one request in → one answer out → exits. The
      default; keeps nothing between runs.
-   - **multi-turn** (interactive session / REPL) — loops, keeps conversation
-     history, quits on **Ctrl+C** (inquirer's `ExitPromptError`) or `/exit`, trims
-     the oldest turns when history outgrows a token budget, and shows a
-     ccstatusline-style usage bar before every prompt against the model's **real
-     context window** (resolved at startup by `src/model-info.ts` from the provider's
-     `/models` endpoint, with a `MODEL_CONTEXT_TOKENS` env fallback, exposed as
-     `ctx.contextWindow`). Wrap the action body in the `runSession` loop — copy the
-     pattern from the seed action `src/actions/ping-llm.ts` (it exports
-     `runSession(io, budget, contextWindow)`, `trimHistory`, `historyBudget`,
-     `contextBar`, and the `SessionIO` seam).
+   - **multi-turn** (interactive session / REPL) — render the Ink `<SessionApp>`
+     (`src/ink/SessionApp.tsx`): a pinned footer with a ccstatusline-style usage bar
+     (vs the model's **real** `ctx.contextWindow`, resolved by `src/model-info.ts`
+     from the provider's `/models` endpoint with a `MODEL_CONTEXT_TOKENS` env
+     fallback), history trimming, and quit on **Ctrl+C** or `/exit`. Pass
+     `respond(messages, { onStep, ask })` for one turn — `ask` is the human-in-the-loop
+     seam. The action file is `.tsx`. Copy the seed `src/actions/ping-llm.tsx`; pure
+     helpers live in `src/session-core.ts`.
    - **both** — run one-shot when the input is supplied via flags (e.g.
-     `--input ...`), otherwise start a session; or offer an inquirer `select`
-     ("Run once" vs "Start a session") at startup. Reuse the same `runSession`
-     loop — the one-shot path is a single turn through `io.invoke`. Worked
-     example: `reference/src/actions/assistant.ts` (`params: []`, branch on
-     `--input`).
+     `--input ...`), otherwise render the `<SessionApp>`; or offer an Ink
+     `selectMenu` ("Run once" vs "Start a session") at startup. Worked example:
+     `reference/src/actions/assistant.tsx` (`params: []`, branch on `--input`;
+     one-shot prints, else renders `<SessionApp>`).
 
    Turn shape is orthogonal to type: a Function or an Agent can be single- or
-   multi-turn. For a multi-turn **agent**, each turn still streams through
-   `runGraphVerbose` (one graph turn per `io.invoke`).
+   multi-turn. For a multi-turn **agent**, each turn streams through
+   `streamAgent` inside the session's `respond` callback.
 4. **Compose the graph from primitives** (see `references/primitives.md`). There is
    NO fixed catalog — reason from the scenario to the smallest graph that fits
    (single agent, sequential, parallel, loop-and-critic, coordinator/routing,
@@ -99,31 +96,39 @@ Run the architect interview (Step 3) and append exactly one action.
    (`createAgent`, `StateGraph`, `addConditionalEdges`, `Send`, `Command`,
    reducers, `tool`, streaming).
 7. **Generate the action file** from `action.function.ts.tmpl` or
-   `action.agent.ts.tmpl` into `src/actions/<name>.ts`, replacing the `{{...}}`
-   markers. Agent actions MUST execute via `runGraphVerbose(graph, input,
-   ctx.spinner)` so node/tool steps render verbosely (chalk + ora). Tools that
-   report progress are authored as `async function*` so `on_tool_event` fires.
-   Multi-turn (or both) actions wrap their per-turn logic in `runSession`.
+   `action.agent.ts.tmpl` into `src/actions/<name>.ts` (or `.tsx` if it renders
+   Ink), replacing the `{{...}}` markers. Agent actions stream node/tool steps via
+   `streamAgent(graph, input, onStep)` from `../trace` (print with chalk, or feed
+   `onStep` to the Ink session). Tools that report progress are authored as
+   `async function*` so `on_tool_event` fires. Multi-turn (or both) actions are
+   `.tsx` and render `<SessionApp>`.
 8. **Register it.** Add an import and append to the `actions` array in
    `src/actions/index.ts`.
 9. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
 
 ## Conventions you MUST keep
 
-- Parameters are declarative `ParamDef[]`. minimist flags fill them; inquirer
-  prompts only for what is missing. Never hand-roll prompt plumbing in an action.
-- The `Ctx` gives every action `{ llm, log (chalk), spinner (ora), getDocs }`.
-- Verbose by default: agent runs stream through `runGraphVerbose`.
-- Turn shape: single-turn actions return after one run; multi-turn actions loop
-  via `runSession` (quit on Ctrl+C / `/exit`, history trimmed to a token budget,
-  per-turn context usage bar via `onContext`/`contextBar`). `ping-llm` is the
-  reference multi-turn action.
-- Keep each file focused; one action per file.
+- The UI runtime is **Ink** (React for the terminal) — no inquirer, no ora.
+  Prompts come from `src/ui.tsx` (`selectMenu`, `askText`, `askConfirm`); wrap slow
+  work in `withSpinner`. `ctx.log` is still chalk for plain colored output.
+- Parameters are declarative `ParamDef[]`. minimist flags fill them; `resolveParams`
+  Ink-prompts only for what is missing. Never hand-roll prompt plumbing in an action.
+- The `Ctx` gives every action `{ llm, log (chalk), getDocs, contextWindow }`.
+- Agent runs stream node/tool steps via `streamAgent` (from `src/trace.ts`).
+- Turn shape: single-turn actions return after one run; multi-turn actions are
+  `.tsx` and render the Ink `<SessionApp>` (pinned context footer; bar shows usage
+  vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;
+  `ping-llm` is the reference multi-turn action.
+- Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
 
 ## Templates
 
-- `templates/` — verbatim skeleton (do not regenerate from memory).
-- `templates/src/actions/ping-llm.ts` — seed action and reference **multi-turn
-  session** (`runSession`, `trimHistory`, `SessionIO`).
-- `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in.
+- `templates/` — verbatim skeleton (do not regenerate from memory). Core:
+  `src/ui.tsx` (Ink prompts + spinner), `src/session-core.ts` (pure session
+  helpers), `src/ink/SessionApp.tsx` (pinned-footer chat UI), `src/trace.ts`
+  (`streamAgent`), `src/model-info.ts` (context window).
+- `templates/src/actions/ping-llm.tsx` — seed action and reference **multi-turn
+  Ink session**.
+- `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in
+  (rename to `.tsx` when rendering Ink).
 - `references/primitives.md` — LangGraph building blocks to compose from.

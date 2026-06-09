@@ -1,4 +1,5 @@
 import type { Action } from './_types';
+import { withSpinner } from '../ui';
 
 export const {{ACTION_CAMEL}}: Action = {
   name: '{{ACTION_NAME}}',
@@ -8,7 +9,9 @@ export const {{ACTION_CAMEL}}: Action = {
   ],
   run: async (values, ctx) => {
     // {{FUNCTION_BODY}} — plain async logic.
-    // Use ctx.llm.invoke(...) for a single model call, ctx.spinner for async feedback,
-    // ctx.log (chalk) for colored output.
+    // ctx.llm.invoke(...) for a single model call; wrap slow work in
+    // withSpinner('working…', () => ...) for an Ink spinner; ctx.log (chalk) to print.
+    // For an interactive multi-turn loop, rename to .tsx and render
+    // <SessionApp respond={...}/> from '../ink/SessionApp'.
   },
 };

@@ -1,5 +1,5 @@
-import chalk from 'chalk';
-import type { Ora } from 'ora';
+// Render-free agent stream consumer. Both the one-shot path (console output) and
+// the Ink session (pinned UI) drive their display from these events.
 
 export interface TraceLine {
   kind: 'node' | 'tool-start' | 'tool-event' | 'tool-end' | 'tool-error';
@@ -35,34 +35,33 @@ export function formatEvent(mode: string, chunk: any): TraceLine | null {
   return null;
 }
 
-// Streams a compiled graph/agent, rendering each step verbosely. Returns the last update chunk.
-export async function runGraphVerbose(graph: any, input: unknown, spinner: Ora): Promise<unknown> {
+// One short label per event for display, e.g. "▸ tools", "🔧 aws_cli(...)", "✓ aws_cli".
+export function stepText(line: TraceLine): string {
+  switch (line.kind) {
+    case 'node':
+      return `▸ ${line.text}`;
+    case 'tool-start':
+      return `🔧 ${line.text}`;
+    case 'tool-end':
+      return `✓ ${line.text}`;
+    case 'tool-error':
+      return `✗ ${line.text}`;
+    default:
+      return line.text;
+  }
+}
+
+// Streams a compiled graph/agent, calling `onStep` per event. Returns the last update chunk.
+export async function streamAgent(
+  graph: any,
+  input: unknown,
+  onStep?: (line: TraceLine) => void,
+): Promise<unknown> {
   let last: unknown;
   for await (const [mode, chunk] of await graph.stream(input, { streamMode: ['updates', 'tools'] })) {
     if (mode === 'updates') last = chunk;
     const line = formatEvent(mode, chunk);
-    if (!line) continue;
-    switch (line.kind) {
-      case 'node':
-        spinner.stopAndPersist({ symbol: chalk.cyan('▸'), text: chalk.cyan(line.text) });
-        // Keep a live spinner for the NEXT step (e.g. the model generating its
-        // answer) so the user always sees activity, not a frozen screen.
-        spinner.start(chalk.dim('working…'));
-        break;
-      case 'tool-start':
-        spinner.start(chalk.yellow(`🔧 ${line.text}`));
-        break;
-      case 'tool-event':
-        spinner.text = chalk.dim(line.text);
-        break;
-      case 'tool-end':
-        spinner.succeed(chalk.green(`✓ ${line.text}`));
-        break;
-      case 'tool-error':
-        spinner.fail(chalk.red(`✗ ${line.text}`));
-        break;
-    }
+    if (line) onStep?.(line);
   }
-  spinner.stop(); // never leave the trailing "working…" spinner hanging
   return last;
 }

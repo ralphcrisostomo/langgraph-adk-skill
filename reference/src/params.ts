@@ -1,15 +1,5 @@
 import type { Action, ParamDef } from './actions/_types';
-
-export interface PromptQuestion {
-  type: string;
-  name: string;
-  message: string;
-  choices?: unknown[];
-  default?: unknown;
-  validate?: (value: unknown) => true | string;
-}
-
-export type PromptFn = (questions: PromptQuestion[]) => Promise<Record<string, unknown>>;
+import { askConfirm, askText, selectMenu } from './ui';
 
 function coerce(value: unknown, type: ParamDef['type']): unknown {
   if (type === 'number') return Number(value);
@@ -17,29 +7,28 @@ function coerce(value: unknown, type: ParamDef['type']): unknown {
   return value;
 }
 
-function toQuestion(def: ParamDef): PromptQuestion {
-  return {
-    type: def.type ?? 'input',
-    name: def.name,
-    message: def.message,
-    choices: def.choices,
-    default: def.default,
-    validate: (value: unknown) => {
-      if (def.required && (value === undefined || value === '' || value === null)) {
-        return `${def.name} is required`;
-      }
-      return def.validate ? def.validate(coerce(value, def.type)) : true;
-    },
-  };
+// Prompt the user (via Ink) for a single missing parameter.
+async function promptFor(def: ParamDef): Promise<unknown> {
+  if (def.type === 'confirm') {
+    return askConfirm(def.message, def.default === true ? 'confirm' : 'cancel');
+  }
+  if (def.type === 'select' && Array.isArray(def.choices)) {
+    const options = def.choices.map((c) =>
+      typeof c === 'object' && c !== null ? (c as { label: string; value: string }) : { label: String(c), value: String(c) },
+    );
+    return selectMenu(def.message, options);
+  }
+  const raw = await askText(def.message, {
+    defaultValue: def.default != null ? String(def.default) : undefined,
+  });
+  return coerce(raw, def.type);
 }
 
 export async function resolveParams(
   defs: ParamDef[],
   flags: Record<string, unknown>,
-  prompt: PromptFn,
 ): Promise<Record<string, unknown>> {
   const resolved: Record<string, unknown> = {};
-  const missing: ParamDef[] = [];
 
   for (const def of defs) {
     if (def.name in flags && flags[def.name] !== undefined) {
@@ -56,36 +45,23 @@ export async function resolveParams(
       }
       resolved[def.name] = value;
     } else {
-      missing.push(def);
+      resolved[def.name] = await promptFor(def);
     }
   }
 
-  if (missing.length > 0) {
-    const answers = await prompt(missing.map(toQuestion));
-    // inquirer returns already-typed answers (number/boolean); flag values are strings and get coerced above
-    Object.assign(resolved, answers);
-  }
   return resolved;
 }
 
-export async function selectAction(
-  actions: Action[],
-  flags: Record<string, unknown>,
-  prompt: PromptFn,
-): Promise<Action> {
-  // bare --action (no value) parses as boolean true -> falls through to the interactive menu
+export async function selectAction(actions: Action[], flags: Record<string, unknown>): Promise<Action> {
+  // bare --action (no value) parses as boolean true -> falls through to the menu
   if (typeof flags.action === 'string') {
     const found = actions.find((a) => a.name === flags.action);
     if (!found) throw new Error(`Unknown action: ${flags.action}`);
     return found;
   }
-  const answer = await prompt([
-    {
-      type: 'select',
-      name: 'action',
-      message: 'Choose an action',
-      choices: actions.map((a) => ({ name: `${a.name} — ${a.description}`, value: a.name })),
-    },
-  ]);
-  return actions.find((a) => a.name === answer.action)!;
+  const name = await selectMenu(
+    'Choose an action',
+    actions.map((a) => ({ label: `${a.name} — ${a.description}`, value: a.name })),
+  );
+  return actions.find((a) => a.name === name)!;
 }

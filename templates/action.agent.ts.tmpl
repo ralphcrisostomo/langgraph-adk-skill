@@ -1,9 +1,18 @@
-import type { Action } from './_types';
+import type { Action, Ctx } from './_types';
 import { createAgent, tool } from 'langchain';
-import { runGraphVerbose } from '../trace';
-// For multi-node patterns also import from '@langchain/langgraph':
-// import { StateGraph, START, END, Send, Command } from '@langchain/langgraph';
+import { streamAgent, stepText, type TraceLine } from '../trace';
+// Multi-node patterns: import { StateGraph, START, END, Send, Command } from '@langchain/langgraph';
 // import * as z from 'zod';
+
+function printStep(ctx: Ctx, line: TraceLine) {
+  const color =
+    line.kind === 'node' ? ctx.log.cyan
+      : line.kind === 'tool-end' ? ctx.log.green
+        : line.kind === 'tool-error' ? ctx.log.red
+          : line.kind === 'tool-start' ? ctx.log.yellow
+            : ctx.log.dim;
+  console.log(color(stepText(line)));
+}
 
 export const {{ACTION_CAMEL}}: Action = {
   name: '{{ACTION_NAME}}',
@@ -17,16 +26,23 @@ export const {{ACTION_CAMEL}}: Action = {
     const agent = createAgent({
       model: ctx.llm,
       tools: [/* {{TOOLS}} */],
-      prompt: '{{SYSTEM_PROMPT}}',
+      systemPrompt: '{{SYSTEM_PROMPT}}',
     });
 
-    const result = await runGraphVerbose(
+    // Streams node/tool steps to the console (no ora). For a multi-turn session,
+    // rename this file to .tsx and render <SessionApp respond={...}/> from
+    // '../ink/SessionApp', driving each turn with streamAgent(agent, { messages }, onStep).
+    const result = await streamAgent(
       agent,
       { messages: [{ role: 'user', content: String(values.input) }] },
-      ctx.spinner,
+      (line) => printStep(ctx, line),
     );
 
-    const messages = (result as any)?.messages ?? [];
+    const lastChunk = (result ?? {}) as Record<string, any>;
+    const state = Array.isArray(lastChunk.messages)
+      ? lastChunk
+      : Object.values(lastChunk).find((v) => v && Array.isArray((v as any).messages)) ?? {};
+    const messages = (state as any).messages ?? [];
     const final = messages[messages.length - 1]?.content ?? '';
     console.log(ctx.log.bold(typeof final === 'string' ? final : JSON.stringify(final)));
   },

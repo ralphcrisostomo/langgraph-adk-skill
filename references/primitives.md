@@ -61,5 +61,6 @@ for await (const [mode, chunk] of await graph.stream(input, { streamMode: ['upda
   // 'updates' -> node-level state; 'tools' -> on_tool_start/event/end/error
 }
 ```
-Use the project's `runGraphVerbose(graph, input, ctx.spinner)` instead of calling
-`.stream` directly — it renders nodes/tools with chalk + ora.
+Use the project's `streamAgent(graph, input, onStep)` (from `src/trace.ts`) instead
+of calling `.stream` directly — `onStep` receives one `TraceLine` per node/tool
+event, which you print with chalk (one-shot) or feed to the Ink `<SessionApp>`.

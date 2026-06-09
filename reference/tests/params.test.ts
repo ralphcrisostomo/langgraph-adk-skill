@@ -1,68 +1,37 @@
 import { test, expect } from 'bun:test';
-import { resolveParams, selectAction, type PromptFn } from '../src/params';
+import { resolveParams, selectAction } from '../src/params';
 import type { Action, ParamDef } from '../src/actions/_types';
 
-const defs: ParamDef[] = [
-  { name: 'title', message: 'Title', type: 'input', required: true },
-  { name: 'count', message: 'Count', type: 'number', required: true },
-];
+const action = (name: string): Action => ({ name, description: name, params: [], run: async () => {} });
 
-test('uses flags when present and only prompts for missing params', async () => {
-  const asked: ParamDef[] = [];
-  const prompt: PromptFn = async (qs) => {
-    for (const q of qs) asked.push(q as ParamDef);
-    return { count: 5 };
-  };
-  const values = await resolveParams(defs, { title: 'Fix auth' }, prompt);
-  expect(values).toEqual({ title: 'Fix auth', count: 5 });
-  expect(asked.map((q) => q.name)).toEqual(['count']); // title came from flags
-});
-
-test('coerces numeric flags', async () => {
-  const prompt: PromptFn = async () => ({});
-  const values = await resolveParams(defs, { title: 't', count: '7' }, prompt);
-  expect(values.count).toBe(7);
-});
-
-test('rejects an invalid flag value via validate', async () => {
-  const guarded: ParamDef[] = [
-    { name: 'n', message: 'N', type: 'number', validate: (v) => (Number(v) > 0 ? true : 'must be > 0') },
+// Flag path only — when values come from flags, no Ink prompt is rendered.
+test('resolveParams coerces and validates flag values without prompting', async () => {
+  const defs: ParamDef[] = [
+    { name: 'count', message: 'Count', type: 'number' },
+    { name: 'yes', message: 'Yes?', type: 'confirm' },
+    { name: 'name', message: 'Name', type: 'input' },
   ];
-  const prompt: PromptFn = async () => ({});
-  await expect(resolveParams(guarded, { n: '-1' }, prompt)).rejects.toThrow(/must be > 0/);
+  const values = await resolveParams(defs, { count: '3', yes: 'true', name: 'ada' });
+  expect(values).toEqual({ count: 3, yes: true, name: 'ada' });
 });
 
-test('selectAction picks by --action flag', async () => {
-  const actions = [{ name: 'a', description: '', params: [], run: async () => {} }] as Action[];
-  const prompt: PromptFn = async () => ({ action: 'never' });
-  const chosen = await selectAction(actions, { action: 'a' }, prompt);
-  expect(chosen.name).toBe('a');
+test('resolveParams rejects a non-numeric number flag', async () => {
+  const defs: ParamDef[] = [{ name: 'count', message: 'Count', type: 'number' }];
+  await expect(resolveParams(defs, { count: 'abc' })).rejects.toThrow(/expected a number/);
 });
 
-test('selectAction prompts a list when no flag', async () => {
-  const actions = [
-    { name: 'a', description: '', params: [], run: async () => {} },
-    { name: 'b', description: '', params: [], run: async () => {} },
-  ] as Action[];
-  const prompt: PromptFn = async () => ({ action: 'b' });
-  const chosen = await selectAction(actions, {}, prompt);
-  expect(chosen.name).toBe('b');
+test('resolveParams enforces required flags and validators', async () => {
+  const req: ParamDef[] = [{ name: 'x', message: 'X', type: 'input', required: true }];
+  await expect(resolveParams(req, { x: '' })).rejects.toThrow(/Missing required/);
+
+  const val: ParamDef[] = [
+    { name: 'x', message: 'X', type: 'input', validate: (v) => (v === 'ok' ? true : 'bad') },
+  ];
+  await expect(resolveParams(val, { x: 'nope' })).rejects.toThrow(/Invalid --x: bad/);
 });
 
-test('selectAction throws on unknown --action', async () => {
-  const actions = [{ name: 'a', description: '', params: [], run: async () => {} }] as Action[];
-  const prompt: PromptFn = async () => ({});
-  await expect(selectAction(actions, { action: 'zzz' }, prompt)).rejects.toThrow(/Unknown action/);
-});
-
-test('rejects a required param passed as an empty flag', async () => {
-  const defs2 = [{ name: 'title', message: 'Title', type: 'input' as const, required: true }];
-  const prompt: PromptFn = async () => ({});
-  await expect(resolveParams(defs2, { title: '' }, prompt)).rejects.toThrow(/title/);
-});
-
-test('rejects a non-numeric value for a number param', async () => {
-  const defs2 = [{ name: 'count', message: 'Count', type: 'number' as const }];
-  const prompt: PromptFn = async () => ({});
-  await expect(resolveParams(defs2, { count: 'abc' }, prompt)).rejects.toThrow(/count/);
+test('selectAction resolves a named action from --action without the menu', async () => {
+  const actions = [action('a'), action('b')];
+  expect((await selectAction(actions, { action: 'b' })).name).toBe('b');
+  await expect(selectAction(actions, { action: 'zzz' })).rejects.toThrow(/Unknown action/);
 });
