@@ -29,8 +29,8 @@ function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
-// ccstatusline-style usage bar, e.g. "Context: [█████░░░░░] 2.0k/8.0k (25%)".
-// `max` is the history token budget — when usage hits ~100%, oldest turns are trimmed.
+// ccstatusline-style usage bar, e.g. "Context: [█████░░░░░] 4.0k/16.4k (25%)".
+// `max` is the model's real context window (oldest turns are trimmed before it fills).
 export function contextBar(used: number, max: number, width = 20): string {
   const ratio = max > 0 ? Math.min(1, used / max) : 0;
   const filled = Math.round(ratio * width);
@@ -38,8 +38,15 @@ export function contextBar(used: number, max: number, width = 20): string {
   return `Context: [${bar}] ${fmtTokens(used)}/${fmtTokens(max)} (${Math.round(ratio * 100)}%)`;
 }
 
+// Reserve ~25% of the model's context window for the system prompt + the response;
+// trim conversation history to the remaining ~75%.
+export function historyBudget(contextWindow: number): number {
+  return Math.max(512, Math.floor(contextWindow * 0.75));
+}
+
 const SYSTEM: ChatMsg = { role: 'system', content: 'You are a helpful, concise assistant.' };
-const MAX_HISTORY_TOKENS = Number(process.env.PING_MAX_HISTORY_TOKENS ?? 8000);
+// Optional hard override of the trim budget; 0 -> derive from the context window.
+const HISTORY_BUDGET_OVERRIDE = Number(process.env.PING_MAX_HISTORY_TOKENS) || 0;
 const QUIT_WORDS = new Set(['/exit', '/quit', 'exit', 'quit']);
 
 // I/O seam so the loop is testable without inquirer or a live model.
@@ -54,7 +61,11 @@ export interface SessionIO {
 
 // Drives a multi-turn chat session, trimming old turns to stay under `maxTokens`.
 // Returns when the user quits (Ctrl+C -> ExitPromptError, or a /exit word).
-export async function runSession(io: SessionIO, maxTokens: number): Promise<ChatMsg[]> {
+export async function runSession(
+  io: SessionIO,
+  maxTokens: number,
+  contextWindow: number = maxTokens,
+): Promise<ChatMsg[]> {
   const history: ChatMsg[] = [];
   const usedTokens = () =>
     history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(SYSTEM.content));
@@ -89,7 +100,7 @@ export async function runSession(io: SessionIO, maxTokens: number): Promise<Chat
       history.pop(); // drop the user message whose call failed so we can retry cleanly
     }
 
-    io.onContext?.(usedTokens(), maxTokens);
+    io.onContext?.(usedTokens(), contextWindow); // bar shows usage vs the real window
   }
 
   return history;
@@ -131,7 +142,8 @@ export const pingLlm: Action = {
       onContext: (used, max) => logContext(ctx, used, max),
     };
 
-    await runSession(io, MAX_HISTORY_TOKENS);
+    const budget = HISTORY_BUDGET_OVERRIDE || historyBudget(ctx.contextWindow);
+    await runSession(io, budget, ctx.contextWindow);
     console.log(ctx.log.dim('Session ended. 👋'));
   },
 };

@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { actions } from './actions';
 import { loadConfig } from './config';
 import { createModel } from './llm';
+import { resolveContextWindow } from './model-info';
 import { selectAction, resolveParams, type PromptFn } from './params';
 import type { Ctx } from './actions/_types';
 
@@ -18,11 +19,12 @@ export async function runCli(argv: Record<string, unknown>): Promise<void> {
 
   const config = loadConfig();
   const llm = createModel(config);
+  const contextWindow = await resolveContextWindow(config);
   const spinner = ora();
   const getDocs = async (_query: string): Promise<string> => {
     throw new Error('getDocs is a wiring point — connect context7 here');
   };
-  const ctx: Ctx = { llm, log: chalk, spinner, getDocs };
+  const ctx: Ctx = { llm, log: chalk, spinner, getDocs, contextWindow };
 
   const action = await selectAction(actions, argv, prompt);
   const values = await resolveParams(action.params, argv, prompt);

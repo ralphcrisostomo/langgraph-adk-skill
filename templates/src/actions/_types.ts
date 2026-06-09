@@ -17,6 +17,7 @@ export interface Ctx {
   log: ChalkInstance;
   spinner: Ora;
   getDocs: (query: string) => Promise<string>;
+  contextWindow: number; // model's real context window in tokens (resolved at startup)
 }
 
 export interface Action {

@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { pingLlm, trimHistory, estimateTokens, runSession, contextBar, type ChatMsg, type SessionIO } from '../src/actions/ping-llm';
+import { pingLlm, trimHistory, estimateTokens, runSession, contextBar, historyBudget, type ChatMsg, type SessionIO } from '../src/actions/ping-llm';
 
 test('ping-llm is a parameterless interactive session action', () => {
   expect(pingLlm.name).toBe('ping-llm');
@@ -76,6 +76,17 @@ test('runSession reports context usage after each turn (used grows, max fixed)',
   expect(contexts).toHaveLength(2);
   expect(contexts.every(([, max]) => max === 9999)).toBe(true);
   expect(contexts[1]![0]).toBeGreaterThan(contexts[0]![0]);
+});
+
+test('historyBudget reserves ~25% headroom under the context window', () => {
+  expect(historyBudget(16384)).toBe(12288); // 75% of 16k
+  expect(historyBudget(100)).toBe(512);     // floor for tiny windows
+});
+
+test('runSession reports usage against the context window, not the trim budget', async () => {
+  const { io, contexts } = scriptedIO(['hello', 'again'], true);
+  await runSession(io, 1000, 16000); // trim budget 1000, real window 16000
+  expect(contexts.every(([, max]) => max === 16000)).toBe(true);
 });
 
 test('runSession runs multiple turns and feeds full history back to the model', async () => {

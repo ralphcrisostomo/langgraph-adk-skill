@@ -1,10 +1,11 @@
 import type { Action } from './_types';
-import { runSession, contextBar, type SessionIO, type ChatMsg } from './ping-llm';
+import { runSession, contextBar, historyBudget, type SessionIO, type ChatMsg } from './ping-llm';
 import inquirer from 'inquirer';
 import minimist from 'minimist';
 
 const SYSTEM: ChatMsg = { role: 'system', content: 'You are a helpful, concise assistant.' };
-const MAX_HISTORY_TOKENS = Number(process.env.ASSISTANT_MAX_HISTORY_TOKENS ?? 8000);
+// Optional hard override of the trim budget; 0 -> derive from the context window.
+const HISTORY_BUDGET_OVERRIDE = Number(process.env.ASSISTANT_MAX_HISTORY_TOKENS) || 0;
 
 // Returns the one-shot input when `--input "…"` was supplied, otherwise undefined
 // (which means: run as an interactive session). Exported so it can be unit-tested.
@@ -59,7 +60,8 @@ export const assistant: Action = {
       },
     };
 
-    await runSession(io, MAX_HISTORY_TOKENS);
+    const budget = HISTORY_BUDGET_OVERRIDE || historyBudget(ctx.contextWindow);
+    await runSession(io, budget, ctx.contextWindow);
     console.log(ctx.log.dim('Session ended. 👋'));
   },
 };
