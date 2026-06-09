@@ -12,10 +12,15 @@ Invoke it and describe what you want. The skill:
    diagram for you to approve** before any code is written.
 3. **Verifies the current API via context7** (the LangChain JS API drifts) and
    **generates + registers** the action.
+4. **Gates completion with a Codex review** — after verifying, it emits a
+   `/codex:review --base=<short-sha> --wait` line and won't call the work done
+   until the review has run.
 
-Generated CLIs use **minimist** (flags fill parameters), **inquirer** (prompts only
-for what's missing), and **chalk + ora** for verbose, observable output — including
-live LangGraph node/tool tracing.
+Generated CLIs use **minimist** (flags fill parameters) and an **Ink** UI (React for
+the terminal — menus, text input, spinners; prompts only for what's missing), with
+**chalk** for plain colored output and live LangGraph node/tool tracing. Multi-turn
+actions render an Ink `<SessionApp>` with a pinned footer: a `Model:` line above a
+ccstatusline-style context-usage bar.
 
 ## Install
 
@@ -40,10 +45,16 @@ my-cli/
   package.json            # bun; scripts: start, test, typecheck
   src/
     index.ts              # minimist parse -> action select -> run
-    cli.ts                # inquirer chooser + flag/prompt resolver
+    cli.ts                # action runner; resolves flags/prompts via Ink
     config.ts             # env -> typed config (local LLM by default)
     llm.ts                # model factory
-    trace.ts              # verbose LangGraph streaming (chalk + ora)
+    model-info.ts         # resolves the model's real context window
+    trace.ts              # verbose LangGraph streaming (streamAgent)
+    session-core.ts       # pure session helpers (context bar, history trim)
+    params.ts             # Ink chooser + flag/prompt resolver
+    ui.tsx                # Ink prompts (menu, text input, confirm, spinner)
+    ink/
+      SessionApp.tsx      # multi-turn Ink chat UI (Model line + context bar)
     actions/
       _types.ts           # Action / ParamDef / Ctx contract
       index.ts            # explicit action registry
@@ -57,7 +68,7 @@ Run it: `bun run start` (interactive) or `bun run start --action <name> --flag v
 - **Function action** — deterministic logic or a single model call.
 - **Agent action** — a LangGraph graph (single agent, sequential, parallel,
   loop-and-critic, coordinator/routing, orchestrator-worker, map-reduce,
-  agent-as-tool, or a custom composition). Executes through `runGraphVerbose` so
+  agent-as-tool, or a custom composition). Executes through `streamAgent` so
   every node and tool call is rendered live.
 
 ## Stack
@@ -68,7 +79,8 @@ Run it: `bun run start` (interactive) or `bun run start --action <name> --flag v
 | `@langchain/langgraph` | graph primitives, streaming, checkpointing |
 | `@langchain/openai` | `ChatOpenAI` (+ custom `baseURL` for local endpoints) |
 | `@langchain/anthropic` | `ChatAnthropic` |
-| `inquirer` · `minimist` · `chalk` · `ora` | interactive CLI |
+| `ink` · `@inkjs/ui` · `ink-text-input` · `react` | terminal UI (menus, input, spinner, chat session) |
+| `minimist` · `chalk` | flag parsing · colored output |
 
 ### Default LLM config (env)
 
