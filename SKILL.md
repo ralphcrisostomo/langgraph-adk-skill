@@ -57,8 +57,8 @@ Run the architect interview (Step 3) and append exactly one action.
    - **multi-turn** (interactive session / REPL) — loops, keeps conversation
      history, quits on **Ctrl+C** (inquirer's `ExitPromptError`) or `/exit`, trims
      the oldest turns when history outgrows a token budget, and shows a
-     ccstatusline-style usage bar each turn against the model's **real context
-     window** (resolved at startup by `src/model-info.ts` from the provider's
+     ccstatusline-style usage bar before every prompt against the model's **real
+     context window** (resolved at startup by `src/model-info.ts` from the provider's
      `/models` endpoint, with a `MODEL_CONTEXT_TOKENS` env fallback, exposed as
      `ctx.contextWindow`). Wrap the action body in the `runSession` loop — copy the
      pattern from the seed action `src/actions/ping-llm.ts` (it exports

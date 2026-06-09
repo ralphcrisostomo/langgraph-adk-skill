@@ -71,6 +71,8 @@ export async function runSession(
     history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(SYSTEM.content));
 
   while (true) {
+    io.onContext?.(usedTokens(), contextWindow); // status line shown before every prompt
+
     let userText: string;
     try {
       userText = (await io.ask()).trim();
@@ -99,8 +101,6 @@ export async function runSession(
       io.onError(err instanceof Error ? err.message : String(err));
       history.pop(); // drop the user message whose call failed so we can retry cleanly
     }
-
-    io.onContext?.(usedTokens(), contextWindow); // bar shows usage vs the real window
   }
 
   return history;

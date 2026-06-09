@@ -70,12 +70,15 @@ test('contextBar renders a proportional ccstatusline-style usage bar', () => {
   expect(s).toContain('░');             // and some empty
 });
 
-test('runSession reports context usage after each turn (used grows, max fixed)', async () => {
+test('runSession reports context usage before every prompt (used grows, max fixed)', async () => {
   const { io, contexts } = scriptedIO(['hello', 'again'], true);
   await runSession(io, 9999);
-  expect(contexts).toHaveLength(2);
+  expect(contexts).toHaveLength(3); // before each prompt: 2 turns + the quit prompt
   expect(contexts.every(([, max]) => max === 9999)).toBe(true);
-  expect(contexts[1]![0]).toBeGreaterThan(contexts[0]![0]);
+  for (let i = 1; i < contexts.length; i++) {
+    expect(contexts[i]![0]).toBeGreaterThanOrEqual(contexts[i - 1]![0]);
+  }
+  expect(contexts.at(-1)![0]).toBeGreaterThan(contexts[0]![0]);
 });
 
 test('historyBudget reserves ~25% headroom under the context window', () => {
