@@ -115,6 +115,10 @@ Run the architect interview (Step 3) and append exactly one action.
   Ink-prompts only for what is missing. Never hand-roll prompt plumbing in an action.
 - The `Ctx` gives every action `{ llm, log (chalk), getDocs, contextWindow }`.
 - Agent runs stream node/tool steps via `streamAgent` (from `src/trace.ts`).
+- **Mandatory context bar**: any action that calls the LLM MUST surface context
+  usage — multi-turn via `<SessionApp>` (live footer), one-shot via
+  `printContextBar(ctx.log, ctx.contextWindow, messages)` (from `src/session-core.ts`).
+  The action templates include it by default.
 - Turn shape: single-turn actions return after one run; multi-turn actions are
   `.tsx` and render the Ink `<SessionApp>` (pinned context footer; bar shows usage
   vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;

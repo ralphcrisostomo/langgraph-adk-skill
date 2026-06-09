@@ -3,7 +3,7 @@ import { render } from 'ink';
 import minimist from 'minimist';
 import { SessionApp } from '../ink/SessionApp';
 import { withSpinner } from '../ui';
-import { SYSTEM, type ChatMsg } from '../session-core';
+import { printContextBar, SYSTEM, type ChatMsg } from '../session-core';
 
 // Returns the one-shot input when `--input "…"` was supplied, otherwise undefined
 // (which means: run as an interactive session). Exported so it can be unit-tested.
@@ -27,6 +27,11 @@ export const assistant: Action = {
     if (oneShot !== undefined) {
       const text = await withSpinner('thinking…', () => ask([{ role: 'user', content: oneShot }]));
       console.log(text ? ctx.log.bold(text) : ctx.log.dim('(no reply)'));
+      printContextBar(ctx.log, ctx.contextWindow, [
+        SYSTEM,
+        { role: 'user', content: oneShot },
+        { role: 'assistant', content: text },
+      ]);
       return;
     }
 

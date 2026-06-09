@@ -1,5 +1,6 @@
 import type { Action } from './_types';
 import { withSpinner } from '../ui';
+import { printContextBar } from '../session-core';
 
 export const {{ACTION_CAMEL}}: Action = {
   name: '{{ACTION_NAME}}',
@@ -11,7 +12,12 @@ export const {{ACTION_CAMEL}}: Action = {
     // {{FUNCTION_BODY}} — plain async logic.
     // ctx.llm.invoke(...) for a single model call; wrap slow work in
     // withSpinner('working…', () => ...) for an Ink spinner; ctx.log (chalk) to print.
+    //
+    // MANDATORY if this action calls the LLM: surface context usage after the call —
+    //   printContextBar(ctx.log, ctx.contextWindow, [...messages, { role: 'assistant', content: reply }]);
+    // (Remove the import above if this action does NOT use the model.)
+    //
     // For an interactive multi-turn loop, rename to .tsx and render
-    // <SessionApp respond={...}/> from '../ink/SessionApp'.
+    // <SessionApp respond={...}/> from '../ink/SessionApp' (it shows the bar live).
   },
 };

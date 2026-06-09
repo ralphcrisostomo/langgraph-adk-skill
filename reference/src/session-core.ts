@@ -1,4 +1,5 @@
 // Pure, React-free session helpers shared by the Ink session UI and actions.
+import type { ChalkInstance } from 'chalk';
 
 export type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -49,4 +50,13 @@ export function contextBar(used: number, max: number, width = 20): string {
 // Tokens currently "loaded": system prompt + the conversation so far.
 export function usedTokens(history: ChatMsg[]): number {
   return history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(SYSTEM.content));
+}
+
+// MANDATORY context indicator for one-shot LLM actions (multi-turn sessions show
+// it live in <SessionApp>). Prints the usage bar for `messages`, colored by fullness.
+export function printContextBar(log: ChalkInstance, contextWindow: number, messages: ChatMsg[]): void {
+  const used = messages.reduce((n, m) => n + estimateTokens(m.content), 0);
+  const ratio = contextWindow > 0 ? used / contextWindow : 0;
+  const color = ratio < 0.7 ? log.green : ratio < 0.9 ? log.yellow : log.red;
+  console.log(color(contextBar(used, contextWindow)));
 }
