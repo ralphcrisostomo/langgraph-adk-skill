@@ -6,8 +6,9 @@ description: Use when the user wants to create, scaffold, or extend a JavaScript
 # LangGraph ADK — Architect & Scaffold
 
 You architect and scaffold action-oriented LangGraph CLIs (Bun + TypeScript). An
-"action" is a menu entry the end-user picks at runtime; it is either a plain async
-function or a LangGraph agent. You decide which per action.
+"action" is a menu entry the end-user picks at runtime. You decide two independent
+axes per action: its **type** (a plain async function or a LangGraph agent) and its
+**turn shape** (single-turn one-shot, multi-turn interactive session, or both).
 
 ## ALWAYS verify the API with context7 first
 
@@ -49,11 +50,29 @@ Run the architect interview (Step 3) and append exactly one action.
    - **Function** — deterministic logic or a single model call → use
      `action.function.ts.tmpl`.
    - **Agent** — needs tools, multi-step reasoning, or orchestration → continue.
-3. **Compose the graph from primitives** (see `references/primitives.md`). There is
+3. **Pick the turn shape.** Ask the user and present it as a single-select choice
+   (inquirer `select` style — offer these three options):
+   - **single-turn** (one-shot) — one request in → one answer out → exits. The
+     default; keeps nothing between runs.
+   - **multi-turn** (interactive session / REPL) — loops, keeps conversation
+     history, quits on **Ctrl+C** (inquirer's `ExitPromptError`) or `/exit`, and
+     trims the oldest turns when history outgrows a token budget. Wrap the action
+     body in the `runSession` loop — copy the pattern from the seed action
+     `src/actions/ping-llm.ts` (it exports `runSession`, `trimHistory`, and the
+     `SessionIO` seam).
+   - **both** — run one-shot when the input is supplied via flags (e.g.
+     `--input ...`), otherwise start a session; or offer an inquirer `select`
+     ("Run once" vs "Start a session") at startup. Reuse the same `runSession`
+     loop — the one-shot path is a single turn through `io.invoke`.
+
+   Turn shape is orthogonal to type: a Function or an Agent can be single- or
+   multi-turn. For a multi-turn **agent**, each turn still streams through
+   `runGraphVerbose` (one graph turn per `io.invoke`).
+4. **Compose the graph from primitives** (see `references/primitives.md`). There is
    NO fixed catalog — reason from the scenario to the smallest graph that fits
    (single agent, sequential, parallel, loop-and-critic, coordinator/routing,
    orchestrator-worker, map-reduce, agent-as-tool, or a custom mix).
-4. **Render an ASCII diagram** of the concrete graph (nodes + edges) and explain
+5. **Render an ASCII diagram** of the concrete graph (nodes + edges) and explain
    why this shape fits. Example:
 
    ```
@@ -70,17 +89,18 @@ Run the architect interview (Step 3) and append exactly one action.
    ```
 
    **Wait for the user to accept or request changes. Loop until accepted.**
-5. **Verify the API via context7** for every construct you will emit
+6. **Verify the API via context7** for every construct you will emit
    (`createAgent`, `StateGraph`, `addConditionalEdges`, `Send`, `Command`,
    reducers, `tool`, streaming).
-6. **Generate the action file** from `action.function.ts.tmpl` or
+7. **Generate the action file** from `action.function.ts.tmpl` or
    `action.agent.ts.tmpl` into `src/actions/<name>.ts`, replacing the `{{...}}`
    markers. Agent actions MUST execute via `runGraphVerbose(graph, input,
    ctx.spinner)` so node/tool steps render verbosely (chalk + ora). Tools that
    report progress are authored as `async function*` so `on_tool_event` fires.
-7. **Register it.** Add an import and append to the `actions` array in
+   Multi-turn (or both) actions wrap their per-turn logic in `runSession`.
+8. **Register it.** Add an import and append to the `actions` array in
    `src/actions/index.ts`.
-8. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
+9. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
 
 ## Conventions you MUST keep
 
@@ -88,10 +108,15 @@ Run the architect interview (Step 3) and append exactly one action.
   prompts only for what is missing. Never hand-roll prompt plumbing in an action.
 - The `Ctx` gives every action `{ llm, log (chalk), spinner (ora), getDocs }`.
 - Verbose by default: agent runs stream through `runGraphVerbose`.
+- Turn shape: single-turn actions return after one run; multi-turn actions loop
+  via `runSession` (quit on Ctrl+C / `/exit`, history trimmed to a token budget).
+  `ping-llm` is the reference multi-turn action.
 - Keep each file focused; one action per file.
 
 ## Templates
 
 - `templates/` — verbatim skeleton (do not regenerate from memory).
+- `templates/src/actions/ping-llm.ts` — seed action and reference **multi-turn
+  session** (`runSession`, `trimHistory`, `SessionIO`).
 - `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in.
 - `references/primitives.md` — LangGraph building blocks to compose from.
