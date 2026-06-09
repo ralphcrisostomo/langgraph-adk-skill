@@ -16,6 +16,7 @@ test('runGraphVerbose drives the spinner across tool events and returns the last
   const spinner: any = {
     text: '',
     start: (t: string) => { calls.push(`start:${t ?? ''}`); return spinner; },
+    stop: () => { calls.push('stop'); return spinner; },
     succeed: (t: string) => { calls.push(`succeed:${t ?? ''}`); return spinner; },
     fail: (t: string) => { calls.push(`fail:${t ?? ''}`); return spinner; },
     stopAndPersist: (o: any) => { calls.push(`persist:${o?.text ?? ''}`); return spinner; },

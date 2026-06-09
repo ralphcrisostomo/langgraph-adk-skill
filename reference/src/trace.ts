@@ -45,6 +45,9 @@ export async function runGraphVerbose(graph: any, input: unknown, spinner: Ora):
     switch (line.kind) {
       case 'node':
         spinner.stopAndPersist({ symbol: chalk.cyan('▸'), text: chalk.cyan(line.text) });
+        // Keep a live spinner for the NEXT step (e.g. the model generating its
+        // answer) so the user always sees activity, not a frozen screen.
+        spinner.start(chalk.dim('working…'));
         break;
       case 'tool-start':
         spinner.start(chalk.yellow(`🔧 ${line.text}`));
@@ -60,5 +63,6 @@ export async function runGraphVerbose(graph: any, input: unknown, spinner: Ora):
         break;
     }
   }
+  spinner.stop(); // never leave the trailing "working…" spinner hanging
   return last;
 }
