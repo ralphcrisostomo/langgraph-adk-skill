@@ -1,0 +1,33 @@
+import type { Action } from './_types';
+import { createAgent, tool } from 'langchain';
+import { runGraphVerbose } from '../trace';
+// For multi-node patterns also import from '@langchain/langgraph':
+// import { StateGraph, START, END, Send, Command } from '@langchain/langgraph';
+// import * as z from 'zod';
+
+export const {{ACTION_CAMEL}}: Action = {
+  name: '{{ACTION_NAME}}',
+  description: '{{ACTION_DESCRIPTION}}',
+  params: [
+    // {{PARAM_DEFS}}
+  ],
+  run: async (values, ctx) => {
+    // {{GRAPH_CONSTRUCTION}} — architect-generated, verified against context7.
+    // Single-agent default; replace with a StateGraph for sequential/parallel/loop/coordinator/etc.
+    const agent = createAgent({
+      model: ctx.llm,
+      tools: [/* {{TOOLS}} */],
+      prompt: '{{SYSTEM_PROMPT}}',
+    });
+
+    const result = await runGraphVerbose(
+      agent,
+      { messages: [{ role: 'user', content: String(values.input) }] },
+      ctx.spinner,
+    );
+
+    const messages = (result as any)?.messages ?? [];
+    const final = messages[messages.length - 1]?.content ?? '';
+    console.log(ctx.log.bold(typeof final === 'string' ? final : JSON.stringify(final)));
+  },
+};

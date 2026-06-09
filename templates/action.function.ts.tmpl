@@ -1,0 +1,14 @@
+import type { Action } from './_types';
+
+export const {{ACTION_CAMEL}}: Action = {
+  name: '{{ACTION_NAME}}',
+  description: '{{ACTION_DESCRIPTION}}',
+  params: [
+    // {{PARAM_DEFS}}  e.g. { name: 'text', message: 'Text to process', type: 'input', required: true }
+  ],
+  run: async (values, ctx) => {
+    // {{FUNCTION_BODY}} — plain async logic.
+    // Use ctx.llm.invoke(...) for a single model call, ctx.spinner for async feedback,
+    // ctx.log (chalk) for colored output.
+  },
+};
