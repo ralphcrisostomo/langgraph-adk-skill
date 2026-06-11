@@ -44,6 +44,11 @@ Run the architect interview (Step 3) and append exactly one action.
 
 ## Step 3 — Architect ONE action
 
+> **Known recipe — AWS assistant:** if the scenario is "drive the AWS CLI / manage
+> AWS in natural language," follow `references/aws-assistant.md`. Its Step 0 is
+> mandatory: **ask the user which AWS profile + region the assistant runs as before
+> generating anything** — the safety model pins every command to one account.
+
 1. **Understand the scenario.** Ask what the action should do, its inputs, and its
    output. Keep it to one action; if the scenario is really several, say so and
    recommend splitting (the user re-runs per action).
@@ -158,3 +163,6 @@ Run the architect interview (Step 3) and append exactly one action.
 - `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in
   (rename to `.tsx` when rendering Ink).
 - `references/primitives.md` — LangGraph building blocks to compose from.
+- `references/aws-assistant.md` — recipe for a read + human-approved-writes AWS CLI
+  assistant action. **When the user asks for an AWS assistant, follow it — and ask
+  for the AWS profile/region FIRST.**
