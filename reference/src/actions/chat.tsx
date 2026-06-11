@@ -1,7 +1,7 @@
 import type { Action } from './_types';
 import { render } from 'ink';
 import { SessionApp } from '../ink/SessionApp';
-import { SYSTEM, type ChatMsg } from '../session-core';
+import { systemMessage, type ChatMsg } from '../session-core';
 
 export const chat: Action = {
   name: 'chat',
@@ -14,7 +14,7 @@ export const chat: Action = {
     }
 
     const respond = async (messages: ChatMsg[]) => {
-      const res = await ctx.llm.invoke([SYSTEM, ...messages] as never);
+      const res = await ctx.llm.invoke([systemMessage(), ...messages] as never);
       return typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
     };
 

@@ -1,8 +1,10 @@
 import { test, expect } from 'bun:test';
 import {
   contextBar,
+  currentDateTime,
   estimateTokens,
   historyBudget,
+  systemMessage,
   trimHistory,
   usedTokens,
   type ChatMsg,
@@ -50,4 +52,18 @@ test('contextBar renders a proportional ccstatusline-style usage bar vs the wind
 test('usedTokens counts the system prompt plus history', () => {
   expect(usedTokens([])).toBeGreaterThan(0); // system prompt baseline
   expect(usedTokens([{ role: 'user', content: 'a'.repeat(40) }])).toBe(usedTokens([]) + 10);
+});
+
+test('currentDateTime renders local date + 24h time + timezone', () => {
+  const now = new Date('2026-06-12T16:30:00Z');
+  // Shape is "YYYY-MM-DD HH:MM (TZ)"; exact values depend on the host timezone.
+  expect(currentDateTime(now)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} \(.+\)$/);
+});
+
+test('systemMessage injects the current date/time into the system prompt', () => {
+  const now = new Date('2026-06-12T16:30:00Z');
+  const msg = systemMessage(now);
+  expect(msg.role).toBe('system');
+  expect(msg.content).toContain('helpful'); // base prompt preserved
+  expect(msg.content).toContain(currentDateTime(now)); // live clock injected
 });

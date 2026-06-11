@@ -1,7 +1,7 @@
 import type { Action, Ctx } from './_types';
 import { createAgent, tool } from 'langchain';
 import { streamAgent, stepText, type TraceLine } from '../trace';
-import { printContextBar } from '../session-core';
+import { currentDateTime, printContextBar } from '../session-core';
 // Multi-node patterns: import { StateGraph, START, END, Send, Command } from '@langchain/langgraph';
 // import * as z from 'zod';
 
@@ -27,7 +27,8 @@ export const {{ACTION_CAMEL}}: Action = {
     const agent = createAgent({
       model: ctx.llm,
       tools: [/* {{TOOLS}} */],
-      systemPrompt: '{{SYSTEM_PROMPT}}',
+      // Append the live date/time so the agent isn't guessing "now" (LLMs have no clock).
+      systemPrompt: `{{SYSTEM_PROMPT}}\nCurrent date and time: ${currentDateTime()}`,
     });
 
     // Streams node/tool steps to the console (no ora). For a multi-turn session,

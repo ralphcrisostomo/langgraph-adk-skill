@@ -3,7 +3,7 @@ import { render } from 'ink';
 import minimist from 'minimist';
 import { SessionApp } from '../ink/SessionApp';
 import { withSpinner } from '../ui';
-import { printContextBar, SYSTEM, type ChatMsg } from '../session-core';
+import { printContextBar, systemMessage, type ChatMsg } from '../session-core';
 
 // Returns the one-shot input when `--input "…"` was supplied, otherwise undefined
 // (which means: run as an interactive session). Exported so it can be unit-tested.
@@ -19,7 +19,7 @@ export const assistant: Action = {
   params: [], // mode is chosen at runtime: --input -> one-shot, otherwise session
   run: async (_values, ctx) => {
     const ask = async (messages: ChatMsg[]) => {
-      const res = await ctx.llm.invoke([SYSTEM, ...messages] as never);
+      const res = await ctx.llm.invoke([systemMessage(), ...messages] as never);
       return typeof res.content === 'string' ? res.content : JSON.stringify(res.content);
     };
 
@@ -28,7 +28,7 @@ export const assistant: Action = {
       const text = await withSpinner('thinking…', () => ask([{ role: 'user', content: oneShot }]));
       console.log(text ? ctx.log.bold(text) : ctx.log.dim('(no reply)'));
       printContextBar(ctx.log, ctx.contextWindow, [
-        SYSTEM,
+        systemMessage(),
         { role: 'user', content: oneShot },
         { role: 'assistant', content: text },
       ], ctx.model);

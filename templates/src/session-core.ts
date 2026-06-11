@@ -3,7 +3,30 @@ import type { ChalkInstance } from 'chalk';
 
 export type ChatMsg = { role: 'system' | 'user' | 'assistant'; content: string };
 
-export const SYSTEM: ChatMsg = { role: 'system', content: 'You are a helpful, concise assistant.' };
+// Base persona. The live date/time is appended per turn by `systemMessage()` so the
+// model isn't left guessing the current date (LLMs have no clock — each call is stateless).
+export const SYSTEM_PROMPT = 'You are a helpful, concise assistant.';
+
+// Local date + 24h time + timezone, e.g. "2026-06-12 09:30 (PDT)". Locales are pinned
+// (en-CA → YYYY-MM-DD, en-GB → 24h HH:MM) so the format is stable across hosts.
+export function currentDateTime(now: Date = new Date()): string {
+  const date = now.toLocaleDateString('en-CA');
+  const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const tz = new Intl.DateTimeFormat('en-US', { timeZoneName: 'short' })
+    .formatToParts(now)
+    .find((p) => p.type === 'timeZoneName')?.value ?? 'local';
+  return `${date} ${time} (${tz})`;
+}
+
+// The system message actually sent to the model: base persona + the current date/time.
+// Call it fresh each turn so long sessions keep an up-to-date clock.
+export function systemMessage(now: Date = new Date()): ChatMsg {
+  return { role: 'system', content: `${SYSTEM_PROMPT}\nCurrent date and time: ${currentDateTime(now)}` };
+}
+
+// Back-compat alias: a system message stamped at module load. Prefer `systemMessage()`
+// at call sites so the clock stays fresh.
+export const SYSTEM: ChatMsg = systemMessage();
 
 export const QUIT_WORDS = new Set(['/exit', '/quit', 'exit', 'quit']);
 
@@ -55,7 +78,7 @@ export function contextBar(used: number, max: number, width = 20): string {
 
 // Tokens currently "loaded": system prompt + the conversation so far.
 export function usedTokens(history: ChatMsg[]): number {
-  return history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(SYSTEM.content));
+  return history.reduce((n, m) => n + estimateTokens(m.content), estimateTokens(systemMessage().content));
 }
 
 // MANDATORY context indicator for one-shot LLM actions (multi-turn sessions show
