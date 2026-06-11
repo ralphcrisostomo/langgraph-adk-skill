@@ -63,6 +63,16 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
         exit();
         return;
       }
+      // /clear is a UI command — never sent to the model. Reset BOTH the
+      // model-facing history ref (token count → 0) AND the rendered lines.
+      // Ink <Static> writes permanently to stdout, so prior output stays in
+      // terminal scrollback; this resets internal state, not the scrollback.
+      if (text.toLowerCase() === '/clear') {
+        history.current = [];
+        setLines([]);
+        push('info', 'context cleared');
+        return;
+      }
 
       push('user', text);
       history.current.push({ role: 'user', content: text });
@@ -126,26 +136,30 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
         )}
       </Static>
 
-      {/* Pinned footer: input/spinner above, context bar pinned at the very bottom. */}
+      {/* Pinned footer: a SINGLE always-mounted TextInput (so it never loses raw-mode
+          focus when the mode flips mid-turn — e.g. a write-approval prompt appearing
+          while the agent is busy), with its prefix + submit handler routed by mode.
+          When busy with no pending question, a spinner sits to the left and submits
+          are ignored. Context bar pinned at the very bottom.
+          NOTE: do NOT split this back into separate TextInput render branches — a
+          freshly-mounted input swapped in mid-turn drops keystrokes in a real TTY,
+          so the approval prompt can't be answered. */}
       <Box flexDirection="column" marginTop={1}>
-        {pendingAsk ? (
-          <Box>
+        <Box>
+          {pendingAsk ? (
             <Text color="magenta">🧑 {pendingAsk.question} </Text>
-            <TextInput value={input} onChange={setInput} onSubmit={submitAnswer} />
-          </Box>
-        ) : busy ? (
-          <Spinner label={status} />
-        ) : (
-          <Box>
+          ) : busy ? (
+            <Box marginRight={1}><Spinner label={status} /></Box>
+          ) : (
             <Text color="cyan">{promptLabel} › </Text>
-            <TextInput
-              value={input}
-              onChange={setInput}
-              onSubmit={handleTurn}
-              placeholder="type a message — /exit or Ctrl+C to quit"
-            />
-          </Box>
-        )}
+          )}
+          <TextInput
+            value={input}
+            onChange={setInput}
+            onSubmit={pendingAsk ? submitAnswer : busy ? () => {} : handleTurn}
+            placeholder={pendingAsk || busy ? '' : 'type a message — /clear to reset, /exit or Ctrl+C to quit'}
+          />
+        </Box>
         <Text dimColor>{modelLine(model)}</Text>
         <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
       </Box>

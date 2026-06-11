@@ -64,3 +64,19 @@ for await (const [mode, chunk] of await graph.stream(input, { streamMode: ['upda
 Use the project's `streamAgent(graph, input, onStep)` (from `src/trace.ts`) instead
 of calling `.stream` directly — `onStep` receives one `TraceLine` per node/tool
 event, which you print with chalk (one-shot) or feed to the Ink `<SessionApp>`.
+
+## Human-in-the-loop in the Ink session (gotcha)
+
+A tool can pause mid-turn and ask the human via `RespondHelpers.ask` (e.g. a
+write-approval gate that resolves only on `y`/`yes`). `SessionApp` shows the
+question and resolves the awaited promise with the typed answer.
+
+**Render ONE persistent `<TextInput>`, not one per mode.** The footer's prefix
+(idle prompt / busy spinner / magenta question) and `onSubmit` handler are routed
+by mode, but the `<TextInput>` itself stays mounted across idle→busy→ask. If you
+instead swap between separate `<TextInput>` instances in different ternary
+branches, a freshly-mounted input that appears *mid-turn* (the approval prompt,
+while the agent is busy) does not reliably hold raw-mode focus in a real TTY —
+keystrokes are dropped and the prompt can never be answered. This bug is invisible
+to `ink-testing-library` (it bypasses raw-mode focus), so verify approval prompts
+in a real terminal, not just headless tests.
