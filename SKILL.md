@@ -1,6 +1,6 @@
 ---
 name: langgraph-adk
-version: 0.1.0
+version: 0.2.0
 description: Use when the user wants to create, scaffold, or extend a JavaScript/TypeScript LangGraph "ADK" command-line agent toolkit — an action-oriented Bun CLI. Architects the agent design (with an ASCII-diagram approval step) and scaffolds or adds actions.
 ---
 
