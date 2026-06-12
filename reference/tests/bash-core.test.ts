@@ -77,6 +77,22 @@ test('aws hidden behind env/sudo/timeout options is still rejected', () => {
   expect(containsRawAws('bash -o pipefail -c "aws s3 ls"')).toBe(true);
 });
 
+test('a shell-expanded command head is refused for raw AWS (could resolve to `aws`)', () => {
+  // Codex review caught this bypass: `env -u` unsets the AWS_CONFIG_FILE / SHARED_CREDENTIALS_FILE
+  // pins shellEnv set to /dev/null, and `$(echo aws)` puts a shell-expanded token in command
+  // position so the literal-aws scan in commandHeads misses it. At runtime zsh expands the
+  // head to `aws` and the CLI walks the user's real ~/.aws/config. Mirror requestsDelete:
+  // any opaque head could be `aws`, so refuse.
+  expect(
+    containsRawAws('env -u AWS_CONFIG_FILE -u AWS_SHARED_CREDENTIALS_FILE $(echo aws) s3 ls'),
+  ).toBe(true);
+  expect(containsRawAws('$(echo aws) s3 ls')).toBe(true);
+  expect(containsRawAws('`echo aws` s3 ls')).toBe(true);
+  expect(containsRawAws('$cmd s3 ls')).toBe(true);
+  // Nested form: the bypass hiding inside `bash -c "…"`.
+  expect(containsRawAws('bash -c "$(echo aws) s3 ls"')).toBe(true);
+});
+
 test('wrapper / interpreter options do not over-reject aws used as a plain argument', () => {
   expect(containsRawAws('timeout 5 rg aws src')).toBe(false);
   expect(containsRawAws('sudo -u root rg aws src')).toBe(false);

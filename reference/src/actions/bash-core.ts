@@ -181,7 +181,13 @@ export function nestedCommandStrings(tokens: string[]): string[] {
 
 export function containsRawAws(command: string): boolean {
   if (invokesAwsDirectly(command)) return true;
-  return nestedCommandStrings(tokenize(command)).some(containsRawAws);
+  const tokens = tokenize(command);
+  // A shell-expanded command head (`$cmd`, `$(…)`, backticks) could resolve to `aws`
+  // at runtime — mirror requestsDelete's "approval-gate the unclassifiable" rule so
+  // a wrapper like `env -u AWS_CONFIG_FILE $(echo aws) s3 ls` can't slip past both
+  // the string classifier and the (now-unset) env pins.
+  if (commandHeads(tokens).some(hasShellExpansion)) return true;
+  return nestedCommandStrings(tokens).some(containsRawAws);
 }
 
 // LAYER 2 of the AWS boundary: the bash subprocess env. Drop EVERY inherited
