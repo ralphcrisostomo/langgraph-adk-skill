@@ -18,16 +18,21 @@ Invoke it and describe what you want. The skill:
 
 Generated CLIs use **minimist** (flags fill parameters) and an **Ink** UI (React for
 the terminal — menus, text input, spinners; prompts only for what's missing), with
-**chalk** for plain colored output and live LangGraph node/tool tracing. Multi-turn
-actions render an Ink `<SessionApp>` with a pinned footer: a `Model:` line above a
-ccstatusline-style context-usage bar.
+**chalk** for plain colored output and live LangGraph node/tool tracing. The system
+prompt is stamped with the current date/time each turn (LLMs have no clock). Multi-turn
+actions render a Claude Code-style Ink `<SessionApp>`: the input framed by dividers
+above a ccstatusline-style status footer (working dir · model · context-usage bar),
+with a configurable `PROMPT_LABEL` prompt prefix.
+
+**Recipes** ship for common scenarios — an [AWS CLI + repo shell assistant](references/chat-aws-repo.md)
+(one pinned account, human-approved writes) and [LangSmith tracing](references/langsmith-observability.md).
 
 ## Install
 
 Clone this repo straight into your Claude Code skills directory:
 
 ```bash
-git clone https://github.com/ralphcrisostomo/langgraph-adk.git ~/.claude/skills/langgraph-adk
+git clone https://github.com/ralphcrisostomo/langgraph-adk-skill.git ~/.claude/skills/langgraph-adk
 ```
 
 Then invoke it in Claude Code:
@@ -50,11 +55,11 @@ my-cli/
     llm.ts                # model factory
     model-info.ts         # resolves the model's real context window
     trace.ts              # verbose LangGraph streaming (streamAgent)
-    session-core.ts       # pure session helpers (context bar, history trim)
+    session-core.ts       # pure session helpers (status footer, date stamp, history trim)
     params.ts             # Ink chooser + flag/prompt resolver
     ui.tsx                # Ink prompts (menu, text input, confirm, spinner)
     ink/
-      SessionApp.tsx      # multi-turn Ink chat UI (Model line + context bar)
+      SessionApp.tsx      # multi-turn Ink chat UI (framed input + dir/model/context footer)
     actions/
       _types.ts           # Action / ParamDef / Ctx contract
       index.ts            # explicit action registry
@@ -91,16 +96,22 @@ LLM_PROVIDER=local            # local | openai | anthropic
 LLM_MODEL=google/gemma-4-26B-A4B-it
 LLM_BASE_URL=http://localhost:8000/v1
 # LLM_API_KEY=                 # optional for local endpoints
+# PROMPT_LABEL=you             # session prompt prefix, e.g. "you › "
 ```
+
+Set `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY` to send run traces to
+[LangSmith](https://smith.langchain.com) (see the observability recipe).
 
 ## Repo layout
 
 ```
-SKILL.md                 # the skill: architect method + scaffold logic
-references/primitives.md  # LangGraph building-block cheat-sheet
-templates/                # verbatim project skeleton + action templates
-reference/                # proving-ground CLI (TDD'd, `bun test`) — templates derive from this
-docs/superpowers/         # design spec + implementation plan
+SKILL.md                              # the skill: architect method + scaffold logic
+references/primitives.md              # LangGraph building-block cheat-sheet
+references/chat-aws-repo.md           # recipe: AWS CLI + repo bash assistant in chat
+references/langsmith-observability.md # recipe: add LangSmith tracing to a project
+templates/                            # verbatim project skeleton + action templates
+reference/                            # proving-ground CLI (TDD'd, `bun test`) — templates derive from this
+docs/superpowers/                     # design spec + implementation plan
 ```
 
 `templates/src` is a verbatim copy of `reference/src`. The `reference/` app is the
