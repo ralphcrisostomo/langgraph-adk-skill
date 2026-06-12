@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { assignsAwsEnv, containsRawAws, requestsDelete, shellEnv } from '../src/actions/bash-core';
+import { tampersWithAwsEnv, containsRawAws, requestsDelete, shellEnv } from '../src/actions/bash-core';
 
 test('non-delete commands pass through', () => {
   expect(requestsDelete('ls -la')).toBe(false);
@@ -130,13 +130,38 @@ test('aws as a mere argument is NOT rejected', () => {
 test('inline AWS_* assignments are rejected (they would re-point the AWS CLI)', () => {
   // The classic env-jail escape: re-point config at the real creds inline.
   expect(
-    assignsAwsEnv('AWS_CONFIG_FILE=~/.aws/config AWS_SHARED_CREDENTIALS_FILE=~/.aws/credentials $cmd --profile other s3 ls'),
+    tampersWithAwsEnv('AWS_CONFIG_FILE=~/.aws/config AWS_SHARED_CREDENTIALS_FILE=~/.aws/credentials $cmd --profile other s3 ls'),
   ).toBe(true);
-  expect(assignsAwsEnv('AWS_PROFILE=other aws s3 ls')).toBe(true);
-  expect(assignsAwsEnv('bash -c "AWS_CONFIG_FILE=/tmp/c aws s3 ls"')).toBe(true); // nested
+  expect(tampersWithAwsEnv('AWS_PROFILE=other aws s3 ls')).toBe(true);
+  expect(tampersWithAwsEnv('bash -c "AWS_CONFIG_FILE=/tmp/c aws s3 ls"')).toBe(true); // nested
   // Non-AWS inline assignments are fine.
-  expect(assignsAwsEnv('FOO=bar rg pattern src')).toBe(false);
-  expect(assignsAwsEnv('ls -la')).toBe(false);
+  expect(tampersWithAwsEnv('FOO=bar rg pattern src')).toBe(false);
+  expect(tampersWithAwsEnv('ls -la')).toBe(false);
+});
+
+test('unsetting AWS_* env vars is rejected (it would arm a child process for ~/.aws fallback)', () => {
+  // Third Codex P1 finding: a bash command that unsets the /dev/null pins, then
+  // delegates to ANY interpreter (python, perl, node, sh, ruby) that calls `aws`
+  // bypasses the string classifier — `aws` is never a head, the interpreter is. The
+  // only correct defense is to refuse mutating AWS env at all so the pins survive
+  // into every child.
+  //   env -u short form, single and chained
+  expect(tampersWithAwsEnv('env -u AWS_CONFIG_FILE python -c "import subprocess; subprocess.run([\\"aws\\",\\"s3\\",\\"ls\\"])"')).toBe(true);
+  expect(tampersWithAwsEnv('env -u AWS_CONFIG_FILE -u AWS_SHARED_CREDENTIALS_FILE python -c "…"')).toBe(true);
+  //   env --unset long form (space and inline)
+  expect(tampersWithAwsEnv('env --unset AWS_CONFIG_FILE python -c "…"')).toBe(true);
+  expect(tampersWithAwsEnv('env --unset=AWS_CONFIG_FILE python -c "…"')).toBe(true);
+  //   `unset AWS_FOO` builtin, including after other names and via -v/-f options
+  expect(tampersWithAwsEnv('unset AWS_CONFIG_FILE; python -c "…"')).toBe(true);
+  expect(tampersWithAwsEnv('unset PATH AWS_CONFIG_FILE; cmd')).toBe(true);
+  expect(tampersWithAwsEnv('unset -v AWS_CONFIG_FILE; cmd')).toBe(true);
+  //   Nested in `bash -c "…"` / `eval "…"`
+  expect(tampersWithAwsEnv('bash -c "env -u AWS_CONFIG_FILE python -c …"')).toBe(true);
+  expect(tampersWithAwsEnv('eval "unset AWS_CONFIG_FILE; cmd"')).toBe(true);
+  //   False-positive guards: unsetting NON-AWS vars is fine.
+  expect(tampersWithAwsEnv('env -u PATH /usr/bin/python -c "…"')).toBe(false);
+  expect(tampersWithAwsEnv('unset PATH FOO_BAR')).toBe(false);
+  expect(tampersWithAwsEnv('env --unset=PATH cmd')).toBe(false);
 });
 
 test('shellEnv strips every inherited AWS_* and pins discovery at nothing', () => {

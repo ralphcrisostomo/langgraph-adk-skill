@@ -187,13 +187,43 @@ export function invokesAwsDirectly(command: string): boolean {
   return commandHeads(tokenize(command)).some(isAwsProgramToken);
 }
 
-// Inline `AWS_*=…` assignments (e.g. `AWS_CONFIG_FILE=~/.aws/config aws …`) would
-// re-point the AWS CLI at the user's real credentials/config from inside `zsh -lc`,
-// overriding the stripped shell env. Refuse any command that sets an AWS_* var inline.
-export function assignsAwsEnv(command: string): boolean {
+// LAYER 3 of the AWS boundary: refuse any inline mutation of AWS_* env vars from
+// inside the bash subprocess. Two ways the user can re-arm AWS:
+//   - Inline assignment (`AWS_PROFILE=other aws …`, `AWS_CONFIG_FILE=… cmd …`)
+//     re-points the CLI at real credentials.
+//   - Unsetting (`env -u AWS_CONFIG_FILE …`, `unset AWS_CONFIG_FILE`,
+//     `env --unset AWS_CONFIG_FILE`, `env --unset=AWS_CONFIG_FILE`) removes the
+//     `/dev/null` pins shellEnv installed, so a CHILD process (a python script,
+//     a perl one-liner, ANY interpreter that happens to call `aws`) inherits no
+//     protective pins and falls back to `~/.aws`. A string classifier on the bash
+//     command CANNOT detect "this program will spawn aws later" — that's
+//     undecidable. The only correct boundary is: refuse any command that touches
+//     the AWS env at all, so the env pins are the real containment.
+export function tampersWithAwsEnv(command: string): boolean {
   const tokens = tokenize(command);
+  // 1. Inline assignment anywhere in the tokens.
   if (tokens.some((t) => /^AWS_[A-Za-z0-9_]+=/.test(t))) return true;
-  return nestedCommandStrings(tokens).some(assignsAwsEnv);
+  // 2. Per-token unset operators: `env -u AWS_X`, `env --unset AWS_X` (space form),
+  //    `env --unset=AWS_X` (inline form), and zsh/bash `unset AWS_X [AWS_Y …]`.
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (/^--unset=AWS_[A-Za-z0-9_]+$/.test(t)) return true;
+    if ((t === '-u' || t === '--unset') && tokens[i + 1] && /^AWS_[A-Za-z0-9_]+$/.test(tokens[i + 1]!)) {
+      return true;
+    }
+    if (stripPath(t) === 'unset') {
+      // `unset` is a shell builtin that takes a list of names until a separator.
+      // Skip its option flags (`-v`, `-f`) and look for an AWS_* name.
+      for (let j = i + 1; j < tokens.length; j++) {
+        const tj = tokens[j]!;
+        if (SEPARATORS.has(tj)) break;
+        if (tj.startsWith('-')) continue;
+        if (/^AWS_[A-Za-z0-9_]+$/.test(tj)) return true;
+      }
+    }
+  }
+  // 3. Nested forms: `bash -c "env -u AWS_CONFIG_FILE …"`, `eval "unset AWS_X; …"`.
+  return nestedCommandStrings(tokens).some(tampersWithAwsEnv);
 }
 
 // Pull out inline command strings from `<shell> -c "<cmd>"` and `eval "<cmd>"`

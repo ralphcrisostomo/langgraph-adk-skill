@@ -13,7 +13,7 @@ import { printContextBar, type ChatMsg } from '../session-core';
 import { streamAgent, stepText, type TraceLine } from '../trace';
 import { tokenize } from './shell-tokens';
 import { isApproval, isWriteCommand, stripManagedFlags } from './aws-cli-core';
-import { assignsAwsEnv, containsRawAws, requestsDelete } from './bash-core';
+import { containsRawAws, requestsDelete, tampersWithAwsEnv } from './bash-core';
 import { formatResult, PROFILE, REGION, runAws, runBash } from './command-runtime';
 import { buildSystemPrompt, loadRepoInstructions } from './repo-instructions';
 
@@ -53,8 +53,8 @@ function buildTools(seams: Seams) {
     async function* (input: { command: string }) {
       const command = (input.command ?? '').trim();
       if (!command) return 'No command provided.';
-      if (containsRawAws(command) || assignsAwsEnv(command)) {
-        return 'Refused: use the aws_cli tool for AWS. bash cannot invoke aws or set AWS_* variables.';
+      if (containsRawAws(command) || tampersWithAwsEnv(command)) {
+        return 'Refused: use the aws_cli tool for AWS. bash cannot invoke aws or set/unset AWS_* variables.';
       }
       yield { message: command.length > 60 ? `${command.slice(0, 57)}…` : command };
       if (requestsDelete(command)) {
