@@ -175,7 +175,10 @@ Run the architect interview (Step 3) and append exactly one action.
   caller's cwd (actions operate on the invocation dir; `CWD` still overrides), so
   `src/index.ts` calls `loadProjectEnv(resolve(import.meta.dir, '..'))` from
   `src/dotenv.ts` to load the project's own `.env` no matter where it runs (keys
-  already in the environment win). Keep the shebang on `src/index.ts`.
+  already in the environment win). Load it BEFORE the CLI graph — `index.ts` does
+  `const { runCli } = await import('./cli')` so actions that snapshot env into
+  module-level constants (e.g. AWS profile/region in the chat-aws-repo recipe) read
+  the loaded values, not stale defaults. Keep the shebang on `src/index.ts`.
 - Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
 - After any create/update operation, validate the file on disk with a targeted
   existence check, diff, or read-back before claiming the change is done.
