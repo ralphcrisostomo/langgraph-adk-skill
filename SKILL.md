@@ -51,7 +51,7 @@ Run the architect interview (Step 3) and append exactly one action.
 
 > **Known recipe — AWS + repo chat assistant:** if the scenario is "drive the AWS
 > CLI / manage AWS in natural language" or "merge aws-assistant into chat", follow
-> `references/aws-assistant.md`. Its Step 0 is mandatory: **ask the user which AWS
+> `references/chat-aws-repo.md`. Its Step 0 is mandatory: **ask the user which AWS
 > profile + region the assistant runs as before generating anything** — the safety
 > model pins every command to one account. Default to merging AWS into the primary
 > `chat` action and adding the repo `bash` tool unless the user explicitly asks for
@@ -184,7 +184,7 @@ Run the architect interview (Step 3) and append exactly one action.
 - `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in
   (rename to `.tsx` when rendering Ink).
 - `references/primitives.md` — LangGraph building blocks to compose from.
-- `references/aws-assistant.md` — recipe for merging AWS CLI + repo bash tools into
+- `references/chat-aws-repo.md` — recipe for merging AWS CLI + repo bash tools into
   the primary `chat` action with human-approved AWS writes and bash deletes.
   **When the user asks for an AWS assistant, follow it — and ask for the AWS
   profile/region FIRST.**

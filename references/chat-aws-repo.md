@@ -30,6 +30,31 @@ deliberate choice, never guessed.
 - Every spawned command is `aws --profile ${PROFILE} --region ${REGION} …` — the
   user can never override these (see managed-flag stripping below).
 
+## Step 1 — Pick your path: migrate vs new project
+
+Both paths converge on the same `chat` action + tools described below; they differ
+only in setup and teardown.
+
+**New project (no `src/actions/index.ts` yet):**
+1. Scaffold first (SKILL.md Step 2A). That gives you the seed `src/actions/chat.tsx`
+   (a plain multi-turn chat) and an `index.ts` registry with `chat` already listed.
+2. Build the tools **into that seed `chat.tsx`** — do NOT create a new action file.
+   Add `aws_cli`, `bash`, `query_user`, the `AGENTS.md` loader, and date injection
+   (all below).
+3. There is nothing to delete or re-register: `chat` is already the only action.
+
+**Migrate an existing project (has `src/actions/index.ts`, often a separate
+`aws-assistant` action):**
+1. Inventory what exists: read `src/actions/index.ts` and check for
+   `src/actions/aws-assistant.tsx` and any shared modules (`aws-cli-core.ts`, etc.).
+2. Fold the AWS tool + gate into `src/actions/chat.tsx` and add the `bash` tool,
+   the `AGENTS.md` loader, and date injection. Keep pure logic in separate modules
+   (`aws-cli-core.ts`, `bash-core.ts`, `command-runtime.ts`) so they stay testable.
+3. **Delete** `src/actions/aws-assistant.tsx` and `tests/aws-assistant.test.ts`,
+   and remove its import + array entry from `src/actions/index.ts` so only `chat`
+   is registered (unless the user explicitly asked to keep a compatibility alias).
+4. Migrate the old action's tests to the new module/test files; don't lose coverage.
+
 ## The chat action
 
 - Update `src/actions/chat.tsx`; do not create a separate `aws-assistant` action
@@ -82,9 +107,51 @@ the pinned AWS profile/region.
 - Require approval for obvious delete operations: `rm`, `rmdir`, `unlink`,
   `delete`, `find -delete`, `--delete`, and common delete subcommands such as
   `git rm`, `docker rm`, `podman rm`, and `kubectl delete`.
-- Reject raw `aws` commands in bash, including `aws ...`, `env aws ...`,
-  `AWS_PROFILE=x aws ...`, and `/path/to/aws ...`; tell the model to use
-  `aws_cli` instead.
+
+**Keep AWS out of bash — TWO layers, both required.** A shell tool can always reach
+a binary, so neither layer alone is enough:
+
+1. **Reject `aws` in the classifier, including when nested.** Detect `aws` invoked
+   as a program — top-level (`aws …`), after env assignments/`env`/`sudo`
+   (`AWS_PROFILE=x aws …`), by path (`/path/to/aws …`), after a shell separator
+   (`; | && ||`), AND **inside a nested shell or `eval`**. The naive "is the first
+   token `aws`" check is the classic bypass:
+   `bash -lc "aws s3 rm s3://prod/key --profile other"` has first token `bash`, so
+   it slips through and runs with an attacker-chosen profile. Recurse into the
+   command string of shell interpreters (`sh/bash/zsh/dash/ksh/… -c|-lc|-ic "<cmd>"`)
+   and of `eval`, and re-check each. Do NOT over-reject `aws` as a mere argument
+   (`rg aws src`, `echo "deploy aws later"`, `bash -c "rg aws src"` must all pass).
+   ```ts
+   // reject if aws is INVOKED (recurse into `bash -c "<cmd>"` / `eval "<cmd>"`)
+   export function containsRawAws(command: string): boolean {
+     if (invokesAwsDirectly(command)) return true;              // top-level / env / path / separator
+     return nestedCommandStrings(tokenize(command)).some(containsRawAws);
+   }
+   ```
+2. **Disable AWS in the bash subprocess env (the real boundary).** Obfuscation
+   (`a''ws`, `$(printf aws)`, base64, `xargs aws`) will eventually beat any string
+   classifier, so the bash subprocess must be unable to authenticate at all.
+   Spawn it with a STRICTER env than `aws_cli` uses — `aws_cli`'s `sanitizedEnv`
+   keeps the config-file vars so the managed profile resolves; bash must drop them
+   too. Use a `shellEnv` that removes ALL inherited `AWS_*` and points discovery at
+   nothing, so even `aws --profile other` finds no profile and no credentials:
+   ```ts
+   export function shellEnv(base = process.env): Record<string, string> {
+     const env: Record<string, string> = {};
+     for (const [k, v] of Object.entries(base)) {
+       if (v === undefined || k.startsWith('AWS_')) continue;   // drop creds, profile, region, config paths
+       env[k] = v;
+     }
+     env.AWS_CONFIG_FILE = '/dev/null';
+     env.AWS_SHARED_CREDENTIALS_FILE = '/dev/null';
+     env.AWS_EC2_METADATA_DISABLED = 'true';                    // block IMDS creds on EC2
+     return env;
+   }
+   // Bun.spawn(['/bin/zsh', '-lc', command], { cwd: process.cwd(), env: shellEnv(), … })
+   ```
+   NEVER pass `process.env` to the bash subprocess — that hands it ambient AWS
+   credentials and every profile in `~/.aws`.
+
 - Bind delete approval the same way as AWS writes: one-shot TTY uses
   `askConfirm`, one-shot non-TTY auto-denies, and sessions use `helpers.ask`
   with only explicit `y`/`yes` accepted.
@@ -142,11 +209,15 @@ Two carve-outs the naive allowlist gets wrong:
 
 **Test the gate** (pure, no AWS): classify reads vs writes incl. the `s3`/`s3api`
 carve-outs; managed-flag stripping incl. the boolean flag not eating the next
-token; `isApproval`; and that a denied write never calls the runner. Also test
-the bash classifier's non-delete pass-through, rm/delete approval, and raw-AWS
-rejection. Add tests for `loadRepoInstructions` with present, missing, and blank
-`AGENTS.md`, plus `buildSystemPrompt` including the fenced repository
-instructions. See `reference/tests` for the shape.
+token; `isApproval`; and that a denied write never calls the runner. For the bash
+classifier: non-delete pass-through, rm/delete approval, and raw-AWS rejection —
+including the **nested** forms (`bash -lc "aws …"`, `sh -c "aws …"`,
+`eval "aws …"`, `timeout 5 bash -c "aws …"`) AND the must-NOT-reject cases
+(`rg aws src`, `bash -c "rg aws src"`). Test `shellEnv` drops every inherited
+`AWS_*` (incl. the config-file vars) and sets the `/dev/null` discovery +
+`AWS_EC2_METADATA_DISABLED`. Add tests for `loadRepoInstructions` with present,
+missing, and blank `AGENTS.md`, plus `buildSystemPrompt` including the fenced
+repository instructions. See `reference/tests` for the shape.
 
 ## Human-in-the-loop input (critical)
 
