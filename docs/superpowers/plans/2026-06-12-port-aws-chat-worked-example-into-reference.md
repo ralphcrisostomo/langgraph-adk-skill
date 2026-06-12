@@ -84,13 +84,13 @@ cd reference && bun run typecheck && bun test && cd ..
 ```
 Expected: typecheck clean; all remaining tests pass (one fewer test file than before).
 
-- [ ] **Step 4: Verify no dangling `assistant` references**
+- [ ] **Step 4: Verify no dangling references to the deleted assistant action**
 
 Run:
 ```bash
-grep -rn assistant reference/src reference/tests
+grep -rnE "from ['\"]\\./assistant|assistant\\.tsx|import.*\\bassistant\\b" reference/src reference/tests
 ```
-Expected: no matches.
+Expected: no matches. (We do NOT grep for the bare word `assistant` — it legitimately appears as a chat role, a UI label, and the SYSTEM_PROMPT in `session-core.ts` / `ink/SessionApp.tsx` / their tests.)
 
 - [ ] **Step 5: Commit**
 
@@ -559,13 +559,13 @@ Expected: the agent streams steps (you will see `Step:` / tool-call lines via `s
 
 If the run fails because no `LLM_API_KEY` is configured for the reference project, that is fine — note it and move on.
 
-- [ ] **Step 5: No dangling `assistant` references anywhere in `reference/`**
+- [ ] **Step 5: No dangling references to the deleted assistant action**
 
 Run:
 ```bash
-grep -rn assistant reference/src reference/tests
+grep -rnE "from ['\"]\\./assistant|assistant\\.tsx|import.*\\bassistant\\b" reference/src reference/tests
 ```
-Expected: no matches.
+Expected: no matches. (The bare word `assistant` is a legitimate chat role / UI label / system-prompt word elsewhere; we only catch the deleted action's import/file references here.)
 
 - [ ] **Step 6: No `<old-app>` or `<old-profile>` leakage in `reference/src` or `reference/tests`**
 
