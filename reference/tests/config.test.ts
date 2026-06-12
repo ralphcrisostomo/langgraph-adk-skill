@@ -1,5 +1,13 @@
 import { test, expect } from 'bun:test';
+import { resolve } from 'node:path';
 import { loadConfig } from '../src/config';
+
+test('resolves CWD to an absolute path, defaulting to the launch dir', () => {
+  expect(loadConfig({}).cwd).toBe(resolve('.')); // unset → launch dir (no change)
+  expect(loadConfig({ CWD: '..' }).cwd).toBe(resolve('..'));
+  expect(loadConfig({ CWD: '  ' }).cwd).toBe(resolve('.')); // blank → default
+  expect(loadConfig({ CWD: '/tmp/x' }).cwd).toBe('/tmp/x'); // absolute respected
+});
 
 test('defaults to local provider with gemma + localhost', () => {
   const c = loadConfig({});

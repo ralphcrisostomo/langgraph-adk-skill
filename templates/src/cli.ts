@@ -14,6 +14,9 @@ export async function runCli(argv: Record<string, unknown>): Promise<void> {
   }
 
   const config = loadConfig();
+  // Operate from the configured working dir (CWD env; default "." = launch dir).
+  // Every action's process.cwd() — incl. the footer Dir line — follows.
+  process.chdir(config.cwd);
   const llm = createModel(config);
   const contextWindow = await resolveContextWindow(config);
   const getDocs = async (_query: string): Promise<string> => {

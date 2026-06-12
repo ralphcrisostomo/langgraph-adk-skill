@@ -97,6 +97,7 @@ LLM_MODEL=google/gemma-4-26B-A4B-it
 LLM_BASE_URL=http://localhost:8000/v1
 # LLM_API_KEY=                 # optional for local endpoints
 # PROMPT_LABEL=you             # session prompt prefix, e.g. "you › "
+# CWD=.                        # working dir actions run in (default: launch dir)
 ```
 
 Set `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY` to send run traces to
