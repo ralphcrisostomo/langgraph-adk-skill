@@ -82,7 +82,7 @@ remove the standalone aws-assistant.
   behavior (spinner floats above the top divider when busy with no pending
   question).
 
-## The three surgical changes during the port
+## The four surgical changes during the port
 
 Everything else is a verbatim file copy from `<downstream-app>` into `reference/`.
 These are the only edits made during the copy:
@@ -116,7 +116,22 @@ sibling modules are being ported in the same change. The `Seams` interface,
 `buildTools`, `buildAgent`, `extractFinalText`, and `oneShotInput` helpers are
 preserved as-is.
 
-### 3. `AGENTS.md` — new generic file (~12 lines)
+### 3. `repo-instructions.ts` — neutral persona line
+
+Replace the project-named persona in `SYSTEM_PROMPT` (line 10):
+
+```ts
+// <downstream-app>:
+'You are the <old-app> chat assistant. You help the user operate AWS and inspect/edit',
+
+// reference/:
+'You are the reference chat assistant. You help the user operate AWS and inspect/edit',
+```
+
+The rest of `SYSTEM_PROMPT` (and the entire `loadRepoInstructions` /
+`buildSystemPrompt` machinery) is unchanged.
+
+### 4. `AGENTS.md` — new generic file (~12 lines)
 
 A minimal generic stand-in so `loadRepoInstructions` returns content when
 exercising `reference/`:
@@ -143,7 +158,6 @@ non-empty (and `loadRepoInstructions` returns truthy content).
 | --- | --- |
 | `src/actions/aws-cli-core.ts` | `src/actions/aws-cli-core.ts` |
 | `src/actions/bash-core.ts` | `src/actions/bash-core.ts` |
-| `src/actions/repo-instructions.ts` | `src/actions/repo-instructions.ts` |
 | `src/actions/shell-tokens.ts` | `src/actions/shell-tokens.ts` |
 | `src/actions/index.ts` | `src/actions/index.ts` |
 | `tests/aws-cli-core.test.ts` | `tests/aws-cli-core.test.ts` |
@@ -151,7 +165,8 @@ non-empty (and `loadRepoInstructions` returns truthy content).
 | `tests/command-runtime.test.ts` | `tests/command-runtime.test.ts` |
 | `tests/repo-instructions.test.ts` | `tests/repo-instructions.test.ts` |
 
-`chat.tsx` and `command-runtime.ts` are listed under "surgical changes" above.
+`chat.tsx`, `command-runtime.ts`, and `repo-instructions.ts` are listed under
+"surgical changes" above.
 
 ## Package dependencies
 
