@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Box, Static, Text, useApp, useInput } from 'ink';
 import { Spinner } from '@inkjs/ui';
 import TextInput from 'ink-text-input';
-import { contextBar, historyBudget, modelLine, QUIT_WORDS, trimHistory, usedTokens, type ChatMsg } from '../session-core';
+import { contextBar, cwdLine, historyBudget, modelLine, QUIT_WORDS, trimHistory, usedTokens, type ChatMsg } from '../session-core';
 
 // Helpers a responder can use mid-turn: stream a step line, or ask the human a question.
 export interface RespondHelpers {
@@ -113,6 +113,7 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
   const used = usedTokens(history.current);
   const ratio = contextWindow > 0 ? used / contextWindow : 0;
   const barColor = ratio < 0.7 ? 'green' : ratio < 0.9 ? 'yellow' : 'red';
+  const divider = '─'.repeat(process.stdout.columns ?? 80);
 
   return (
     <>
@@ -136,15 +137,17 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
         )}
       </Static>
 
-      {/* Pinned footer: a SINGLE always-mounted TextInput (so it never loses raw-mode
-          focus when the mode flips mid-turn — e.g. a write-approval prompt appearing
-          while the agent is busy), with its prefix + submit handler routed by mode.
-          When busy with no pending question, a spinner sits to the left and submits
-          are ignored. Context bar pinned at the very bottom.
-          NOTE: do NOT split this back into separate TextInput render branches — a
+      {/* Pinned footer (Claude Code-style): a SINGLE always-mounted TextInput framed
+          above and below by a divider, then the status block (dir / model / context)
+          pinned at the very bottom. The single input never loses raw-mode focus when
+          the mode flips mid-turn — e.g. a write-approval prompt appearing while the
+          agent is busy — with its prefix + submit handler routed by mode; when busy
+          with no pending question a spinner sits to the left and submits are ignored.
+          NOTE: do NOT split the input back into separate TextInput render branches — a
           freshly-mounted input swapped in mid-turn drops keystrokes in a real TTY,
           so the approval prompt can't be answered. */}
       <Box flexDirection="column" marginTop={1}>
+        <Text dimColor>{divider}</Text>
         <Box>
           {pendingAsk ? (
             <Text color="magenta">🧑 {pendingAsk.question} </Text>
@@ -160,8 +163,12 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
             placeholder={pendingAsk || busy ? '' : 'type a message — /clear to reset, /exit or Ctrl+C to quit'}
           />
         </Box>
-        <Text dimColor>{modelLine(model)}</Text>
-        <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
+        <Text dimColor>{divider}</Text>
+        <Box flexDirection="column">
+          <Text dimColor>{cwdLine()}</Text>
+          <Text dimColor>{modelLine(model)}</Text>
+          <Text color={barColor}>{contextBar(used, contextWindow)}</Text>
+        </Box>
       </Box>
     </>
   );

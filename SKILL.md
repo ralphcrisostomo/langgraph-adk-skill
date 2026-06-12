@@ -157,11 +157,12 @@ Run the architect interview (Step 3) and append exactly one action.
   or `undefined`, then append it to the system prompt in a fenced `md` block
   before the current date/time. Test present, missing, and blank `AGENTS.md`
   cases so scaffolded agents actually follow repository rules at runtime.
-- **Mandatory model + context bar**: any action that calls the LLM MUST surface the
-  model id and context usage — multi-turn via `<SessionApp>` (live footer: a `Model:`
-  line above the bar), one-shot via
-  `printContextBar(ctx.log, ctx.contextWindow, messages, ctx.model)` (from
-  `src/session-core.ts`). The action templates include it by default.
+- **Mandatory status footer**: any action that calls the LLM MUST surface the working
+  dir, model id, and context usage. Multi-turn renders a Claude Code-style `<SessionApp>`
+  footer — the input framed above/below by a divider, then `Dir:` / `Model:` / context
+  bar; one-shot calls `printContextBar(ctx.log, ctx.contextWindow, messages, ctx.model)`
+  (from `src/session-core.ts`). The prompt label is `ctx.promptLabel` (the `PROMPT_LABEL`
+  env, default `you`). The action templates include all of this by default.
 - Turn shape: single-turn actions return after one run; multi-turn actions are
   `.tsx` and render the Ink `<SessionApp>` (pinned context footer; bar shows usage
   vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;

@@ -19,7 +19,7 @@ export const chat: Action = {
     };
 
     const app = render(
-      <SessionApp contextWindow={ctx.contextWindow} model={ctx.model} respond={respond} promptLabel="you" />,
+      <SessionApp contextWindow={ctx.contextWindow} model={ctx.model} respond={respond} promptLabel={ctx.promptLabel} />,
     );
     await app.waitUntilExit();
   },

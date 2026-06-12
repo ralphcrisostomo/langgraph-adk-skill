@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test';
 import {
   contextBar,
   currentDateTime,
+  cwdLine,
   estimateTokens,
   historyBudget,
   systemMessage,
@@ -9,6 +10,14 @@ import {
   usedTokens,
   type ChatMsg,
 } from '../src/session-core';
+
+test('cwdLine shows the working directory, abbreviating $HOME to ~', () => {
+  expect(cwdLine('/home/u/Projects/app', '/home/u')).toBe('Dir: ~/Projects/app');
+  expect(cwdLine('/home/u', '/home/u')).toBe('Dir: ~'); // exact home
+  expect(cwdLine('/var/tmp/work', '/home/u')).toBe('Dir: /var/tmp/work'); // outside home
+  expect(cwdLine('/home/username2', '/home/u')).toBe('Dir: /home/username2'); // no false prefix
+  expect(cwdLine('/abs/path', undefined)).toBe('Dir: /abs/path'); // no HOME set
+});
 
 test('estimateTokens approximates 4 chars per token', () => {
   expect(estimateTokens('')).toBe(0);

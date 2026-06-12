@@ -17,6 +17,7 @@ export interface Ctx {
   getDocs: (query: string) => Promise<string>;
   contextWindow: number; // model's real context window in tokens (resolved at startup)
   model: string; // model id (for the ccstatusline-style "Model:" footer line)
+  promptLabel: string; // session prompt label (PROMPT_LABEL env, default "you")
 }
 
 export interface Action {

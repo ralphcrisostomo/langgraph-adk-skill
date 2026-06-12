@@ -9,6 +9,13 @@ test('defaults to local provider with gemma + localhost', () => {
   expect(c.apiKey).toBe('not-needed');
 });
 
+test('reads PROMPT_LABEL, defaulting to "you"', () => {
+  expect(loadConfig({}).promptLabel).toBe('you'); // unset → default
+  expect(loadConfig({ PROMPT_LABEL: 'puretec' }).promptLabel).toBe('puretec');
+  expect(loadConfig({ PROMPT_LABEL: '  ' }).promptLabel).toBe('you'); // blank → default
+  expect(loadConfig({ PROMPT_LABEL: '  puretec  ' }).promptLabel).toBe('puretec'); // trimmed
+});
+
 test('honors explicit overrides', () => {
   const c = loadConfig({
     LLM_PROVIDER: 'anthropic',

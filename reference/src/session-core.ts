@@ -67,6 +67,14 @@ export function modelLine(model: string): string {
   return `Model: ${model}`;
 }
 
+// ccstatusline-style working-directory line, e.g. "Dir: ~/Projects/my-app".
+// This is the dir actions run in (and where an agent's shell tools / repo files
+// resolve from), so it belongs in the status footer. $HOME is abbreviated to `~`.
+export function cwdLine(cwd: string = process.cwd(), home = process.env.HOME): string {
+  const path = home && (cwd === home || cwd.startsWith(`${home}/`)) ? `~${cwd.slice(home.length)}` : cwd;
+  return `Dir: ${path}`;
+}
+
 // ccstatusline-style usage bar, e.g. "Context: [█████░░░░░] 4.0k/16.4k (25%)".
 // `max` is the model's real context window (oldest turns are trimmed before it fills).
 export function contextBar(used: number, max: number, width = 20): string {
@@ -93,6 +101,7 @@ export function printContextBar(
   const used = messages.reduce((n, m) => n + estimateTokens(m.content), 0);
   const ratio = contextWindow > 0 ? used / contextWindow : 0;
   const color = ratio < 0.7 ? log.green : ratio < 0.9 ? log.yellow : log.red;
+  console.log(log.dim(cwdLine()));
   console.log(log.dim(modelLine(model)));
   console.log(color(contextBar(used, contextWindow)));
 }

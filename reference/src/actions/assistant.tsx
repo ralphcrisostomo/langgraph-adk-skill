@@ -45,7 +45,7 @@ export const assistant: Action = {
         contextWindow={ctx.contextWindow}
         model={ctx.model}
         respond={(messages) => ask(messages)}
-        promptLabel="you"
+        promptLabel={ctx.promptLabel}
       />,
     );
     await app.waitUntilExit();
