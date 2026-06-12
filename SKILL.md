@@ -151,6 +151,12 @@ Run the architect interview (Step 3) and append exactly one action.
   in a column. Keep that alignment when editing the menu label.
 - The `Ctx` gives every action `{ llm, log (chalk), getDocs, contextWindow, model }`.
 - Agent runs stream node/tool steps via `streamAgent` (from `src/trace.ts`).
+- Agent/chat actions that build a custom system prompt MUST load repository
+  guidance from the project root `AGENTS.md` when present. Add a small
+  `loadRepoInstructions(cwd = process.cwd())` helper that returns trimmed content
+  or `undefined`, then append it to the system prompt in a fenced `md` block
+  before the current date/time. Test present, missing, and blank `AGENTS.md`
+  cases so scaffolded agents actually follow repository rules at runtime.
 - **Mandatory model + context bar**: any action that calls the LLM MUST surface the
   model id and context usage — multi-turn via `<SessionApp>` (live footer: a `Model:`
   line above the bar), one-shot via

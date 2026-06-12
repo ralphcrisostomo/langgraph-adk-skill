@@ -39,6 +39,33 @@ deliberate choice, never guessed.
   SKILL.md Step 3 and `reference/src/actions/assistant.tsx`.
 - Build a fresh agent per turn with `createAgent({ model: ctx.llm, tools, systemPrompt })`
   (verify the signature via context7 first). Stream with `streamAgent`.
+- Load repository instructions from root `AGENTS.md` on every turn and append them
+  to the chat system prompt in a fenced `md` block before the current date/time.
+  Use helpers shaped like:
+  ```ts
+  const REPO_INSTRUCTIONS_FILE = 'AGENTS.md';
+
+  export async function loadRepoInstructions(cwd = process.cwd()): Promise<string | undefined> {
+    const file = Bun.file(`${cwd}/${REPO_INSTRUCTIONS_FILE}`);
+    if (!(await file.exists())) return undefined;
+    const text = (await file.text()).trim();
+    return text || undefined;
+  }
+
+  export function buildSystemPrompt(repoInstructions: string | undefined, now = new Date()): string {
+    const sections = [SYSTEM_PROMPT];
+    if (repoInstructions) {
+      sections.push([
+        `Repository instructions from ${REPO_INSTRUCTIONS_FILE}:`,
+        '```md',
+        repoInstructions,
+        '```',
+      ].join('\n'));
+    }
+    sections.push(`Current date and time: ${currentDateTime(now)}`);
+    return sections.join('\n\n');
+  }
+  ```
 - Tools: `aws_cli` (below), `bash` (below), `query_user` (human clarification),
   and optionally `load_doc` (domain knowledge — see "Knowledge docs" below).
 - Register only `chat` in `src/actions/index.ts` after the merge, unless the user
@@ -117,7 +144,9 @@ Two carve-outs the naive allowlist gets wrong:
 carve-outs; managed-flag stripping incl. the boolean flag not eating the next
 token; `isApproval`; and that a denied write never calls the runner. Also test
 the bash classifier's non-delete pass-through, rm/delete approval, and raw-AWS
-rejection. See `reference/tests` for the shape.
+rejection. Add tests for `loadRepoInstructions` with present, missing, and blank
+`AGENTS.md`, plus `buildSystemPrompt` including the fenced repository
+instructions. See `reference/tests` for the shape.
 
 ## Human-in-the-loop input (critical)
 
