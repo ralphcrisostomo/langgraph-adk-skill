@@ -119,8 +119,13 @@ Run the architect interview (Step 3) and append exactly one action.
    `.tsx` and render `<SessionApp>`.
 8. **Register it.** Add an import and append to the `actions` array in
    `src/actions/index.ts`.
-9. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
-10. **Gate completion with a Codex review (MANDATORY).** Implementation is NOT done
+9. **Validate every file write.** After creating or updating any file, immediately
+   verify the filesystem state before moving on: use `test -f <path>` for new
+   files, `git diff -- <path>` for updates, and re-read the relevant lines with
+   `sed`/`rg`/`nl` to confirm the intended content is present. Never assume a
+   write succeeded just because a tool call was attempted.
+10. **Verify:** `bun run typecheck` then `bun run start --action <name> ...`.
+11. **Gate completion with a Codex review (MANDATORY).** Implementation is NOT done
     until the diff has been reviewed by Codex. Capture the pre-work commit first
     (`git rev-parse --short HEAD` BEFORE you start editing), then after verification
     passes, emit this exact copy-paste line for the user (substitute the captured
@@ -156,6 +161,8 @@ Run the architect interview (Step 3) and append exactly one action.
   vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;
   `chat` is the reference multi-turn action.
 - Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
+- After any create/update operation, validate the file on disk with a targeted
+  existence check, diff, or read-back before claiming the change is done.
 - **Codex review gates completion**: never call the implementation done until a
   Codex review of the diff has run. After verification, emit the copy-paste line
   `/codex:review --base=<short-sha> --wait` (with the pre-work short SHA) and wait.

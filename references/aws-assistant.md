@@ -63,6 +63,9 @@ the pinned AWS profile/region.
   with only explicit `y`/`yes` accepted.
 - Put pure classification helpers in a small module (for example
   `src/actions/bash-core.ts`) and test them without spawning commands.
+- After writing or updating each helper/action/test file, validate the result on
+  disk with `test -f`, `git diff -- <path>`, or a targeted read-back of the
+  changed lines before proceeding.
 
 ## The `aws_cli` tool + safety gate (keep these invariants)
 
