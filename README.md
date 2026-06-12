@@ -52,6 +52,7 @@ my-cli/
     index.ts              # minimist parse -> action select -> run
     cli.ts                # action runner; resolves flags/prompts via Ink
     config.ts             # env -> typed config (local LLM by default)
+    dotenv.ts             # load the project's own .env (for the global bin)
     llm.ts                # model factory
     model-info.ts         # resolves the model's real context window
     trace.ts              # verbose LangGraph streaming (streamAgent)
@@ -67,6 +68,22 @@ my-cli/
 ```
 
 Run it: `bun run start` (interactive) or `bun run start --action <name> --flag value`.
+
+### Install as a global command
+
+The generated `package.json` exposes a `bin` named after the project, so you can
+run the CLI from anywhere:
+
+```bash
+bun link            # once, from the project dir — registers `<project-name>` globally
+cd ~/some/other/repo
+<project-name>      # runs here; the footer Dir + file tools operate on this dir
+```
+
+A linked bin runs with your shell's current directory, so actions operate on
+wherever you invoke it (`CWD` still overrides this). The project's own `.env` is
+loaded automatically — resolved from the source location — so your LLM config
+works no matter where you run it.
 
 ### Action types
 
@@ -99,6 +116,10 @@ LLM_BASE_URL=http://localhost:8000/v1
 # PROMPT_LABEL=you             # session prompt prefix, e.g. "you › "
 # CWD=.                        # working dir actions run in (default: launch dir)
 ```
+
+Run `bun link` to install the CLI as a global command (named after the package);
+it runs from any directory, operates on that directory, and still loads this
+project's `.env`.
 
 Set `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY` to send run traces to
 [LangSmith](https://smith.langchain.com) (see the observability recipe).

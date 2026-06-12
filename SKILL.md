@@ -40,7 +40,10 @@ observability / tracing / LangSmith (e.g. "add LangSmith", "trace my agent runs"
    and `bun add -d typescript bun-types @types/minimist @types/react ink-testing-library`
    (this also pins the `*` versions in package.json).
 4. Confirm it runs: `bun run start --list` (should list `chat`).
-5. Tell the user how to configure `.env` and run `bun run start`.
+5. Tell the user how to configure `.env` and run `bun run start`. Mention they can
+   `bun link` to install the CLI as a global command (named after the package) that
+   runs from any directory and operates on that directory (`src/dotenv.ts` loads the
+   project's own `.env` so config still works from anywhere).
 6. Then proceed to Step 3 to add their first real action (one run = one action).
 
 ## Step 2B — Add-action
@@ -167,6 +170,12 @@ Run the architect interview (Step 3) and append exactly one action.
   `.tsx` and render the Ink `<SessionApp>` (pinned context footer; bar shows usage
   vs the real `ctx.contextWindow`). Pure helpers live in `src/session-core.ts`;
   `chat` is the reference multi-turn action.
+- **Global bin**: `package.json` declares a `bin` named `{{PROJECT_NAME}}` → `src/index.ts`,
+  so `bun link` installs the CLI as a global command. A linked bin runs with the
+  caller's cwd (actions operate on the invocation dir; `CWD` still overrides), so
+  `src/index.ts` calls `loadProjectEnv(resolve(import.meta.dir, '..'))` from
+  `src/dotenv.ts` to load the project's own `.env` no matter where it runs (keys
+  already in the environment win). Keep the shebang on `src/index.ts`.
 - Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
 - After any create/update operation, validate the file on disk with a targeted
   existence check, diff, or read-back before claiming the change is done.

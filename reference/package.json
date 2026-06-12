@@ -3,6 +3,9 @@
   "version": "0.2.0",
   "type": "module",
   "private": true,
+  "bin": {
+    "langgraph-adk-reference": "src/index.ts"
+  },
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test",
