@@ -77,6 +77,27 @@ test('aws hidden behind env/sudo/timeout options is still rejected', () => {
   expect(containsRawAws('bash -o pipefail -c "aws s3 ls"')).toBe(true);
 });
 
+test('long-form wrapper value-options do not hide the real command', () => {
+  // Second Codex P1 finding: WRAPPER_VALUE_FLAGS only held the short forms. The walker
+  // over `env --unset AWS_CONFIG_FILE aws s3 ls` did not skip `AWS_CONFIG_FILE`, so it
+  // landed on `AWS_CONFIG_FILE` as the head and missed the real `aws`. Same containment
+  // for sudo --user, nice --adjustment, timeout --kill-after, env --chdir, etc.
+  expect(
+    containsRawAws('env --unset AWS_CONFIG_FILE --unset AWS_SHARED_CREDENTIALS_FILE aws s3 ls'),
+  ).toBe(true);
+  // --flag=value (inline) form: value rides in the same token, so nothing extra to skip.
+  expect(containsRawAws('env --unset=AWS_CONFIG_FILE aws s3 ls')).toBe(true);
+  expect(containsRawAws('sudo --user root aws s3 ls')).toBe(true);
+  expect(containsRawAws('sudo --chdir /tmp aws s3 ls')).toBe(true);
+  expect(containsRawAws('nice --adjustment 5 aws s3 ls')).toBe(true);
+  expect(containsRawAws('timeout --kill-after 5 timeout 3 aws s3 ls')).toBe(true);
+  // Combined with shell expansion (covers the layered bypass).
+  expect(containsRawAws('env --unset AWS_CONFIG_FILE $(echo aws) s3 ls')).toBe(true);
+  // And the false-positive guard: a long-form value-flag does NOT swallow a real
+  // command argument when the real program is a non-aws binary.
+  expect(containsRawAws('env --chdir /tmp rg aws src')).toBe(false);
+});
+
 test('a shell-expanded command head is refused for raw AWS (could resolve to `aws`)', () => {
   // Codex review caught this bypass: `env -u` unsets the AWS_CONFIG_FILE / SHARED_CREDENTIALS_FILE
   // pins shellEnv set to /dev/null, and `$(echo aws)` puts a shell-expanded token in command

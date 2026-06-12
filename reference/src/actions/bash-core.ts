@@ -74,6 +74,56 @@ const WRAPPER_VALUE_FLAGS = new Set([
   '-a',
 ]);
 
+// Long-form equivalents of the wrapper value-flags above (e.g. `env --unset NAME`,
+// `sudo --user NAME`). Without these, the head walker over `env --unset AWS_CONFIG_FILE aws …`
+// would push `AWS_CONFIG_FILE` as the command head and miss the real `aws`. Same
+// containment rule: skip the next token after the flag. The `--flag=value` (inline)
+// form is handled separately in commandHeads — the value rides in the same token.
+const WRAPPER_VALUE_LONG_FLAGS = new Set([
+  // env
+  '--unset',
+  '--chdir',
+  '--split-string',
+  '--block-signal',
+  '--default-signal',
+  '--ignore-signal',
+  // sudo
+  '--user',
+  '--group',
+  '--host',
+  '--prompt',
+  '--close-from',
+  '--type',
+  '--role',
+  '--other-user',
+  // nice
+  '--adjustment',
+  // timeout
+  '--kill-after',
+  '--signal',
+  // ionice
+  '--class',
+  '--classdata',
+  '--pid',
+  '--pgid',
+  '--uid',
+  // stdbuf
+  '--input',
+  '--output',
+  '--error',
+  // xargs
+  '--arg-file',
+  '--delimiter',
+  '--eof',
+  '--replace',
+  '--max-lines',
+  '--max-args',
+  '--max-procs',
+  '--max-chars',
+  // time
+  '--format',
+]);
+
 export function requestsDelete(command: string): boolean {
   const tokens = tokenize(command);
   for (let i = 0; i < tokens.length; i++) {
@@ -112,7 +162,9 @@ function commandHeads(tokens: string[]): string[] {
     if (!pending) continue; // inside the current command's arguments
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue; // VAR=val prefix
     if (t.startsWith('-')) {
-      if (WRAPPER_VALUE_FLAGS.has(t)) i++; // skip this option's value token too
+      // Long flag with inline =value (e.g. `--unset=NAME`) is self-contained — no extra token.
+      if (t.startsWith('--') && t.includes('=')) continue;
+      if (WRAPPER_VALUE_FLAGS.has(t) || WRAPPER_VALUE_LONG_FLAGS.has(t)) i++; // skip the value token
       continue; // an option belonging to a wrapper we already stepped over
     }
     if (COMMAND_PREFIXES.has(stripPath(t))) continue; // transparent wrapper
