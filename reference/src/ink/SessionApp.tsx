@@ -145,17 +145,22 @@ export function SessionApp({ contextWindow, model, respond, promptLabel = 'you',
           pinned at the very bottom. The single input never loses raw-mode focus when
           the mode flips mid-turn — e.g. a write-approval prompt appearing while the
           agent is busy — with its prefix + submit handler routed by mode; when busy
-          with no pending question a spinner sits to the left and submits are ignored.
+          with no pending question a spinner floats ABOVE the top divider (Claude
+          Code-style) while the prompt prefix stays in the frame, and submits are ignored.
           NOTE: do NOT split the input back into separate TextInput render branches — a
           freshly-mounted input swapped in mid-turn drops keystrokes in a real TTY,
           so the approval prompt can't be answered. */}
       <Box flexDirection="column" marginTop={1}>
+        {/* Claude Code-style status: the busy spinner floats ABOVE the top
+            divider, outside the input frame, instead of replacing the prompt
+            prefix inside the box. A pending question still owns the input row. */}
+        {busy && !pendingAsk && (
+          <Box marginBottom={0}><Spinner label={status} /></Box>
+        )}
         <Text dimColor>{divider}</Text>
         <Box>
           {pendingAsk ? (
             <Text color="magenta">🧑 {pendingAsk.question} </Text>
-          ) : busy ? (
-            <Box marginRight={1}><Spinner label={status} /></Box>
           ) : (
             <Text color="cyan">{promptLabel} › </Text>
           )}
