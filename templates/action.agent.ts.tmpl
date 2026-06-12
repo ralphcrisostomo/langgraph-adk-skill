@@ -1,3 +1,7 @@
+// If this action renders Ink (rename this file to .tsx), make the FIRST line:
+//   /** @jsxImportSource react */
+// so it transpiles with React JSX when run as a global bin from any directory
+// (Bun resolves jsxImportSource from the launch cwd's tsconfig otherwise).
 import type { Action, Ctx } from './_types';
 import { createAgent, tool } from 'langchain';
 import { streamAgent, stepText, type TraceLine } from '../trace';

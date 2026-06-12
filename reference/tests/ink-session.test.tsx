@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import { test, expect } from 'bun:test';
 import { render } from 'ink-testing-library';
 import { SessionApp } from '../src/ink/SessionApp';

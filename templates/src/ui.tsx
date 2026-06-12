@@ -1,3 +1,6 @@
+/** @jsxImportSource react */
+// Pin React JSX so the CLI transpiles correctly when run as a global bin from any
+// directory — Bun resolves jsxImportSource from the launch cwd's tsconfig otherwise.
 import * as React from 'react';
 import { Box, render, Text, useInput } from 'ink';
 import { ConfirmInput, Select, Spinner, TextInput } from '@inkjs/ui';

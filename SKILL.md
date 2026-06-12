@@ -179,6 +179,12 @@ Run the architect interview (Step 3) and append exactly one action.
   `const { runCli } = await import('./cli')` so actions that snapshot env into
   module-level constants (e.g. AWS profile/region in the chat-aws-repo recipe) read
   the loaded values, not stale defaults. Keep the shebang on `src/index.ts`.
+- **`.tsx` JSX pragma**: every `.tsx` file MUST start with `/** @jsxImportSource react */`.
+  Bun resolves `jsxImportSource` from the launch cwd's `tsconfig.json`, so a global bin
+  run inside a Vue/Nuxt project (`jsxImportSource: vue`) would otherwise transpile the
+  CLI's own `.tsx` against `vue/jsx-dev-runtime` and crash. The pragma pins React JSX
+  per file regardless of cwd; the seed `.tsx` files and the `tests/global-bin-jsx.test.ts`
+  regression cover this. New Ink actions need the pragma as their first line.
 - Keep each file focused; one action per file. Actions that render Ink are `.tsx`.
 - After any create/update operation, validate the file on disk with a targeted
   existence check, diff, or read-back before claiming the change is done.
