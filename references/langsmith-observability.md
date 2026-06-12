@@ -57,18 +57,21 @@ Also ask what to call the LangSmith project (default: the package name).
      actionStarted = true;
      // ...action.run as-is
    } finally {
-     // Guard is REQUIRED: awaitAllCallbacks() constructs the LangSmith client
-     // even when tracing is off, so a bad LANGSMITH_* env value (e.g. an
-     // out-of-range LANGSMITH_TRACING_SAMPLING_RATE) would fail a successful
-     // run. The guard mirrors langsmith's own isTracingEnabled() — all four
-     // names — because a user may enable tracing via legacy shell vars even
-     // though this project documents only LANGSMITH_TRACING.
-     // The 5s cap is REQUIRED: the client retries with ~90s timeouts, so an
-     // unreachable endpoint would otherwise hang the exit for minutes.
-     // A flush error/timeout only warns — never change the run's outcome.
-     const tracingOn = ['LANGSMITH_TRACING', 'LANGCHAIN_TRACING', 'LANGSMITH_TRACING_V2', 'LANGCHAIN_TRACING_V2']
-       .some((name) => process.env[name] === 'true');
-     if (actionStarted && tracingOn) {
+     // Deliberately NO tracing-enabled env guard. langsmith's "is tracing on"
+     // logic spans many env knobs (LANGSMITH_/LANGCHAIN_ × TRACING/TRACING_V2,
+     // LANGSMITH_TRACING_MODE=otel, OTEL_ENABLED, …) and drifts across releases;
+     // re-deriving it here silently drops traces for configs you forgot. Safety
+     // comes from three structural properties instead:
+     //   • actionStarted — a Ctrl+C at the pre-action prompts (ExitPromptError)
+     //     keeps its instant exit; traces only exist once an action ran.
+     //   • the catch — awaitAllCallbacks() constructs the LangSmith client even
+     //     when tracing is off, so a bad LANGSMITH_* env value (e.g. an
+     //     out-of-range LANGSMITH_TRACING_SAMPLING_RATE) throws here; it warns
+     //     but MUST NOT change the run's outcome.
+     //   • the 5s cap — the client retries with ~90s timeouts, so an unreachable
+     //     endpoint would otherwise hang the exit for minutes.
+     // When tracing is off the flush resolves in a few ms, so it's unconditional.
+     if (actionStarted) {
        const flush = awaitAllCallbacks().then(
          () => 'ok' as const,
          (err) => {
