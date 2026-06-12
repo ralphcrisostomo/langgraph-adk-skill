@@ -1,18 +1,21 @@
-# Recipe: AWS assistant action (read + human-approved writes)
+# Recipe: Merge AWS assistant into chat (plus repo bash tool)
 
-A reusable **agent** action that lets the end-user drive the AWS CLI in natural
-language, scoped to ONE account via a single managed profile. Reads run
-immediately; any mutating command is gated behind explicit human approval.
+A reusable **chat agent** that lets the end-user drive the AWS CLI and inspect or
+edit the repository in natural language. AWS is scoped to ONE account via a
+single managed profile. Safe reads run immediately; AWS writes, bash writes, and
+unknown bash commands are gated behind explicit human approval.
 
-This is an **agent**, turn-shape **both** (one-shot via `--input`, otherwise an
-Ink `<SessionApp>`). It composes the standard primitives — nothing AWS-specific
-in the runtime except the `aws_cli` tool and its safety gate.
+Default shape: merge this into the existing `chat` action as an **agent** with
+turn-shape **both** (one-shot via `--input`, otherwise an Ink `<SessionApp>`).
+Remove the old `aws-assistant` menu item unless the user explicitly asks to keep
+an alias. It composes the standard primitives: one ReAct agent with `aws_cli`,
+`bash`, and `query_user` tools.
 
 ## Step 0 — ASK FOR THE AWS PROFILE (do this FIRST, every time)
 
 Before generating anything, **ask the user which AWS profile and region the
 assistant should run as.** This is mandatory — the whole safety model is "every
-command runs through ONE pinned profile/account," so the profile must be a
+AWS command runs through ONE pinned profile/account," so the profile must be a
 deliberate choice, never guessed.
 
 - Ask: "Which AWS CLI profile should this assistant use? (must exist in
@@ -27,15 +30,41 @@ deliberate choice, never guessed.
 - Every spawned command is `aws --profile ${PROFILE} --region ${REGION} …` — the
   user can never override these (see managed-flag stripping below).
 
-## The action
+## The chat action
 
+- Update `src/actions/chat.tsx`; do not create a separate `aws-assistant` action
+  unless explicitly requested.
 - `params: []`. Branch on `--input`: one-shot prints the final text + a context
   bar; otherwise render `<SessionApp>` (multi-turn). See the `both` turn-shape in
   SKILL.md Step 3 and `reference/src/actions/assistant.tsx`.
 - Build a fresh agent per turn with `createAgent({ model: ctx.llm, tools, systemPrompt })`
   (verify the signature via context7 first). Stream with `streamAgent`.
-- Tools: `aws_cli` (below), `query_user` (human clarification), and optionally
-  `load_doc` (domain knowledge — see "Knowledge docs" below).
+- Tools: `aws_cli` (below), `bash` (below), `query_user` (human clarification),
+  and optionally `load_doc` (domain knowledge — see "Knowledge docs" below).
+- Register only `chat` in `src/actions/index.ts` after the merge, unless the user
+  chose a compatibility alias.
+
+## The `bash` tool + repo safety gate
+
+The bash tool lets chat search files, inspect content, and make approved repo
+changes. Keep this tool separate from `aws_cli` so raw AWS commands cannot escape
+the pinned AWS profile/region.
+
+- Run from the project working directory with capped stdout/stderr and a timeout.
+- Allow a conservative read-only set without approval: `rg`, `rg --files`, `cat`,
+  `sed -n`, `ls`, `find`, `head`, `tail`, `wc`, `pwd`, `test`, and read-only git
+  commands such as `git status`, `git diff`, `git show`, `git log`, `git branch`,
+  and `git rev-parse`.
+- Require approval for writes, deletes, installs, network commands, redirects,
+  pipes/chains/substitutions/globs, git mutations, and any unknown command.
+- Reject raw `aws` commands in bash, including `aws ...`, `env aws ...`,
+  `AWS_PROFILE=x aws ...`, and `/path/to/aws ...`; tell the model to use
+  `aws_cli` instead.
+- Bind approval the same way as AWS writes: one-shot TTY uses `askConfirm`,
+  one-shot non-TTY auto-denies, and sessions use `helpers.ask` with only explicit
+  `y`/`yes` accepted.
+- Put pure classification helpers in a small module (for example
+  `src/actions/bash-core.ts`) and test them without spawning commands.
 
 ## The `aws_cli` tool + safety gate (keep these invariants)
 
@@ -85,8 +114,10 @@ Two carve-outs the naive allowlist gets wrong:
 
 **Test the gate** (pure, no AWS): classify reads vs writes incl. the `s3`/`s3api`
 carve-outs; managed-flag stripping incl. the boolean flag not eating the next
-token; `isApproval`; and that a denied write never calls the runner. See
-`reference/tests` for the shape.
+token; `isApproval`; and that a denied write never calls the runner. Also test
+the bash classifier's read allowlist, write fallback, raw-AWS rejection, shell
+metacharacter approval, and git read/mutation split. See `reference/tests` for
+the shape.
 
 ## Human-in-the-loop input (critical)
 
@@ -123,6 +154,7 @@ new DynamoDBClient({ region, credentials: fromIni({ profile }) });
 
 ## Finish
 
-`bun run typecheck` → `bun run start --action <name> --input "…"` (and a session
+`bun run typecheck` → `bun test` → `bun run start --list` (should show `chat` as
+the primary action) → `bun run start --action chat --input "…"` (and a session
 run to test the approval prompt in a real terminal) → then the MANDATORY Codex
 review gate (SKILL.md Step 3.10).

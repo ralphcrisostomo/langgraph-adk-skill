@@ -1,7 +1,7 @@
 ---
 name: langgraph-adk
 version: 0.2.0
-description: Use when the user wants to create, scaffold, or extend a JavaScript/TypeScript LangGraph "ADK" command-line agent toolkit — an action-oriented Bun CLI. Architects the agent design (with an ASCII-diagram approval step) and scaffolds or adds actions.
+description: Use when the user wants to create, scaffold, or extend a JavaScript/TypeScript LangGraph "ADK" command-line agent toolkit — an action-oriented Bun CLI — or to add LangSmith observability/tracing to a scaffolded project. Architects the agent design (with an ASCII-diagram approval step) and scaffolds or adds actions.
 ---
 
 # LangGraph ADK — Architect & Scaffold
@@ -24,6 +24,11 @@ Check the target directory for `src/actions/index.ts`:
 - **Absent → Scaffold-new** (Step 2A)
 - **Present → Add-action** (Step 2B)
 
+**Exception — cross-cutting upgrades are NOT actions.** If the user asks to add
+observability / tracing / LangSmith (e.g. "add LangSmith", "trace my agent runs",
+"why did the agent do X — I need visibility"), follow
+`references/langsmith-observability.md` instead — no architect interview.
+
 ## Step 2A — Scaffold-new
 
 1. Ask for the project directory name if not given.
@@ -44,10 +49,13 @@ Run the architect interview (Step 3) and append exactly one action.
 
 ## Step 3 — Architect ONE action
 
-> **Known recipe — AWS assistant:** if the scenario is "drive the AWS CLI / manage
-> AWS in natural language," follow `references/aws-assistant.md`. Its Step 0 is
-> mandatory: **ask the user which AWS profile + region the assistant runs as before
-> generating anything** — the safety model pins every command to one account.
+> **Known recipe — AWS + repo chat assistant:** if the scenario is "drive the AWS
+> CLI / manage AWS in natural language" or "merge aws-assistant into chat", follow
+> `references/aws-assistant.md`. Its Step 0 is mandatory: **ask the user which AWS
+> profile + region the assistant runs as before generating anything** — the safety
+> model pins every command to one account. Default to merging AWS into the primary
+> `chat` action and adding the repo `bash` tool unless the user explicitly asks for
+> a separate action.
 
 1. **Understand the scenario.** Ask what the action should do, its inputs, and its
    output. Keep it to one action; if the scenario is really several, say so and
@@ -163,6 +171,9 @@ Run the architect interview (Step 3) and append exactly one action.
 - `action.function.ts.tmpl` / `action.agent.ts.tmpl` — action bodies you fill in
   (rename to `.tsx` when rendering Ink).
 - `references/primitives.md` — LangGraph building blocks to compose from.
-- `references/aws-assistant.md` — recipe for a read + human-approved-writes AWS CLI
-  assistant action. **When the user asks for an AWS assistant, follow it — and ask
-  for the AWS profile/region FIRST.**
+- `references/aws-assistant.md` — recipe for merging AWS CLI + repo bash tools into
+  the primary `chat` action with human-approved writes. **When the user asks for an
+  AWS assistant, follow it — and ask for the AWS profile/region FIRST.**
+- `references/langsmith-observability.md` — recipe for enabling LangSmith tracing
+  on an existing project (env-var driven; no new deps). **Ask the privacy question
+  FIRST — traces ship full prompts and tool outputs to LangSmith's cloud.**
