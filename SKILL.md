@@ -172,8 +172,9 @@ Run the architect interview (Step 3) and append exactly one action.
   (rename to `.tsx` when rendering Ink).
 - `references/primitives.md` — LangGraph building blocks to compose from.
 - `references/aws-assistant.md` — recipe for merging AWS CLI + repo bash tools into
-  the primary `chat` action with human-approved writes. **When the user asks for an
-  AWS assistant, follow it — and ask for the AWS profile/region FIRST.**
+  the primary `chat` action with human-approved AWS writes and bash deletes.
+  **When the user asks for an AWS assistant, follow it — and ask for the AWS
+  profile/region FIRST.**
 - `references/langsmith-observability.md` — recipe for enabling LangSmith tracing
   on an existing project (env-var driven; no new deps). **Ask the privacy question
   FIRST — traces ship full prompts and tool outputs to LangSmith's cloud.**

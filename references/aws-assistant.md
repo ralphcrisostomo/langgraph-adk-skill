@@ -2,8 +2,8 @@
 
 A reusable **chat agent** that lets the end-user drive the AWS CLI and inspect or
 edit the repository in natural language. AWS is scoped to ONE account via a
-single managed profile. Safe reads run immediately; AWS writes, bash writes, and
-unknown bash commands are gated behind explicit human approval.
+single managed profile. AWS writes and bash delete operations are gated behind
+explicit human approval; other bash commands run immediately.
 
 Default shape: merge this into the existing `chat` action as an **agent** with
 turn-shape **both** (one-shot via `--input`, otherwise an Ink `<SessionApp>`).
@@ -51,18 +51,16 @@ changes. Keep this tool separate from `aws_cli` so raw AWS commands cannot escap
 the pinned AWS profile/region.
 
 - Run from the project working directory with capped stdout/stderr and a timeout.
-- Allow a conservative read-only set without approval: `rg`, `rg --files`, `cat`,
-  `sed -n`, `ls`, `find`, `head`, `tail`, `wc`, `pwd`, `test`, and read-only git
-  commands such as `git status`, `git diff`, `git show`, `git log`, `git branch`,
-  and `git rev-parse`.
-- Require approval for writes, deletes, installs, network commands, redirects,
-  pipes/chains/substitutions/globs, git mutations, and any unknown command.
+- Run bash commands immediately unless they request deletion.
+- Require approval for obvious delete operations: `rm`, `rmdir`, `unlink`,
+  `delete`, `find -delete`, `--delete`, and common delete subcommands such as
+  `git rm`, `docker rm`, `podman rm`, and `kubectl delete`.
 - Reject raw `aws` commands in bash, including `aws ...`, `env aws ...`,
   `AWS_PROFILE=x aws ...`, and `/path/to/aws ...`; tell the model to use
   `aws_cli` instead.
-- Bind approval the same way as AWS writes: one-shot TTY uses `askConfirm`,
-  one-shot non-TTY auto-denies, and sessions use `helpers.ask` with only explicit
-  `y`/`yes` accepted.
+- Bind delete approval the same way as AWS writes: one-shot TTY uses
+  `askConfirm`, one-shot non-TTY auto-denies, and sessions use `helpers.ask`
+  with only explicit `y`/`yes` accepted.
 - Put pure classification helpers in a small module (for example
   `src/actions/bash-core.ts`) and test them without spawning commands.
 
@@ -115,9 +113,8 @@ Two carve-outs the naive allowlist gets wrong:
 **Test the gate** (pure, no AWS): classify reads vs writes incl. the `s3`/`s3api`
 carve-outs; managed-flag stripping incl. the boolean flag not eating the next
 token; `isApproval`; and that a denied write never calls the runner. Also test
-the bash classifier's read allowlist, write fallback, raw-AWS rejection, shell
-metacharacter approval, and git read/mutation split. See `reference/tests` for
-the shape.
+the bash classifier's non-delete pass-through, rm/delete approval, and raw-AWS
+rejection. See `reference/tests` for the shape.
 
 ## Human-in-the-loop input (critical)
 
