@@ -358,12 +358,16 @@ function subcommandOf(head: string, args: string[]): string | undefined {
 // AND the unclassifiable — a shell-expanded command head (`$cmd`, `$(…)`, backticks)
 // could resolve to rm. Recurse into every nested context.
 function requestsDeleteTokens(tokens: string[]): boolean {
+  // A `-delete`/`--delete` FLAG token anywhere is destructive (`find … -delete`,
+  // `rsync --delete`). Scan flat — `find … -exec grep {} \; -delete` fragments the
+  // find command across the escaped `\;` / `{}` separators, so the flag may not sit
+  // in find's own args. Over-gating a literal `-delete` argument is rare and safe.
+  if (tokens.some((t) => FIND_DELETE_FLAGS.has(t))) return true;
   for (const c of simpleCommands(tokens)) {
     if (hasShellExpansion(c.head)) return true; // opaque command name
     const head = stripPath(c.head);
     if (DELETE_HEADS.has(head)) return true;
     if (runsOpaqueCode(head, c.args)) return true; // shell/code interpreter running opaque code
-    if (head === 'find' && c.args.some((a) => FIND_DELETE_FLAGS.has(a))) return true;
     const subs = SUBCOMMAND_DELETES[head];
     if (subs) {
       const sub = subcommandOf(head, c.args);

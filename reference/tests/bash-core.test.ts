@@ -216,6 +216,10 @@ test('delete: git clean / find -exec / subcommand-after-global-option', () => {
   expect(requestsDelete('docker --context prod rm c')).toBe(true);
   expect(requestsDelete("find . -name '*.tmp' -exec rm -f {} +")).toBe(true);
   expect(requestsDelete("find . -exec sh -c 'rm -f \"$1\"' sh {} ;")).toBe(true);
+  // -delete anywhere is gated, even after an escaped -exec terminator that fragments
+  // the find command across separators
+  expect(requestsDelete('find . -delete')).toBe(true);
+  expect(requestsDelete('find . -exec grep foo {} \\; -delete')).toBe(true);
   // false-positive guards
   expect(requestsDelete('git -C rm status')).toBe(false); // 'rm' is the -C value
   expect(requestsDelete('find . -exec grep foo {} +')).toBe(false);
