@@ -182,3 +182,168 @@ test('shellEnv strips every inherited AWS_* and pins discovery at nothing', () =
   expect(env.AWS_SHARED_CREDENTIALS_FILE).toBe('/dev/null');
   expect(env.AWS_EC2_METADATA_DISABLED).toBe('true');
 });
+
+test('shellEnv allowlists: non-AWS secrets are dropped too', () => {
+  const env = shellEnv({
+    PATH: '/usr/bin',
+    HOME: '/home/u',
+    LC_ALL: 'en_US.UTF-8',
+    OPENAI_API_KEY: 'sk-secret',
+    ANTHROPIC_API_KEY: 'sk-ant',
+    GH_TOKEN: 'ghp_x',
+    SSH_AUTH_SOCK: '/tmp/agent',
+    MY_APP_SECRET: 'shh',
+  });
+  expect(env.PATH).toBe('/usr/bin');
+  expect(env.HOME).toBe('/home/u');
+  expect(env.LC_ALL).toBe('en_US.UTF-8');
+  for (const k of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GH_TOKEN', 'SSH_AUTH_SOCK', 'MY_APP_SECRET']) {
+    expect(env[k]).toBeUndefined();
+  }
+});
+
+test('shellEnv jails HOME when a home override is given', () => {
+  const env = shellEnv({ HOME: '/Users/me', PATH: '/usr/bin' }, '/tmp/jail');
+  expect(env.HOME).toBe('/tmp/jail');
+  expect(env.PATH).toBe('/usr/bin');
+});
+
+test('delete: git clean / find -exec / subcommand-after-global-option', () => {
+  expect(requestsDelete('git clean -fd')).toBe(true);
+  expect(requestsDelete('git clean -fdx')).toBe(true);
+  expect(requestsDelete('git -C . rm file')).toBe(true);
+  expect(requestsDelete('kubectl -n default delete pod x')).toBe(true);
+  expect(requestsDelete('docker --context prod rm c')).toBe(true);
+  expect(requestsDelete("find . -name '*.tmp' -exec rm -f {} +")).toBe(true);
+  expect(requestsDelete("find . -exec sh -c 'rm -f \"$1\"' sh {} ;")).toBe(true);
+  // -delete anywhere is gated, even after an escaped -exec terminator that fragments
+  // the find command across separators
+  expect(requestsDelete('find . -delete')).toBe(true);
+  expect(requestsDelete('find . -exec grep foo {} \\; -delete')).toBe(true);
+  // false-positive guards
+  expect(requestsDelete('git -C rm status')).toBe(false); // 'rm' is the -C value
+  expect(requestsDelete('find . -exec grep foo {} +')).toBe(false);
+});
+
+test('delete: command substitution / env -S / git alias bodies', () => {
+  expect(requestsDelete('echo $(rm -rf output)')).toBe(true);
+  expect(requestsDelete('echo `rm -rf output`')).toBe(true);
+  // quoted paren inside the substitution must not end it early
+  expect(requestsDelete("echo $(printf ')' ; rm -rf build)")).toBe(true);
+  expect(containsRawAws("echo $(printf ')' ; aws s3 ls)")).toBe(true);
+  expect(requestsDelete("env -S 'rm -rf build'")).toBe(true);
+  expect(requestsDelete("git -c alias.clean='!rm -rf build' clean")).toBe(true);
+  expect(requestsDelete('echo $(date)')).toBe(false);
+});
+
+test('delete: newlines, brace/function bodies, compound blocks, redirections', () => {
+  expect(requestsDelete('echo ok\nrm -rf build')).toBe(true);
+  expect(requestsDelete('function clean { rm -rf build; }; clean')).toBe(true);
+  expect(requestsDelete('f(){rm -rf build;}; f')).toBe(true); // compact, no space
+  expect(requestsDelete('if true; then rm -rf build; fi')).toBe(true);
+  expect(requestsDelete('for f in a b; do rm $f; done')).toBe(true);
+  expect(requestsDelete('> /dev/null rm -rf build')).toBe(true); // leading redirect
+  expect(requestsDelete('2>err.log rm -rf x')).toBe(true);
+  // ${…} stays intact; redirect AFTER a non-delete head is fine
+  expect(requestsDelete('cat ${HOME}/notes.txt')).toBe(false);
+  expect(requestsDelete('echo hi > out.log')).toBe(false);
+});
+
+test('grouped short wrapper options (sudo -Eu root) do not hide the real command', () => {
+  expect(containsRawAws('sudo -Eu root aws s3 ls')).toBe(true);
+  expect(requestsDelete('sudo -Eu root rm -rf x')).toBe(true);
+  expect(containsRawAws('sudo -u root aws s3 ls')).toBe(true); // ungrouped still works
+  // attached value (`-uroot`) and a false-positive guard
+  expect(containsRawAws('sudo -uroot rg aws src')).toBe(false);
+  expect(containsRawAws('sudo -Eu root rg aws src')).toBe(false);
+});
+
+test('zsh precommand modifiers (noglob/nocorrect/repeat) do not hide the command', () => {
+  expect(requestsDelete('noglob rm -rf build')).toBe(true);
+  expect(requestsDelete('nocorrect rm -rf build')).toBe(true);
+  expect(requestsDelete('repeat 1 rm -rf build')).toBe(true);
+  expect(containsRawAws('noglob aws s3 ls')).toBe(true);
+  expect(containsRawAws('repeat 3 aws s3 ls')).toBe(true);
+  // false-positive guard: the modifier doesn't make an argument the head
+  expect(requestsDelete('noglob echo rm')).toBe(false);
+});
+
+test('the time wrapper --format value does not hide the real command', () => {
+  expect(containsRawAws("time --format '%E' aws s3 ls")).toBe(true);
+  expect(requestsDelete("time --format '%E' rm x")).toBe(true);
+  expect(requestsDelete('time rm x')).toBe(true); // bare time prefix
+  expect(containsRawAws("time --format '%E' rg aws src")).toBe(false); // false-positive guard
+});
+
+test('delete: interpreters running opaque code/scripts are gated', () => {
+  expect(requestsDelete("printf 'rm -rf build\\n' | sh")).toBe(true);
+  expect(requestsDelete('bash deploy.sh')).toBe(true);
+  expect(requestsDelete('python -c \'import os; os.remove("x")\'')).toBe(true);
+  expect(requestsDelete('node -e \'require("fs").rmSync("x")\'')).toBe(true);
+  expect(requestsDelete('bun run build')).toBe(true);
+  // versioned interpreter binaries (python3.11, ruby2.7, php8.2) are gated too
+  expect(requestsDelete('python3.11 -c \'import shutil; shutil.rmtree("build")\'')).toBe(true);
+  expect(requestsDelete('python3.12 build.py')).toBe(true);
+  expect(requestsDelete('ruby2.7 cleanup.rb')).toBe(true);
+  // multi-arg eval concatenates: the second arg still runs
+  expect(requestsDelete("eval 'echo ok;' 'rm -rf build'")).toBe(true);
+  expect(containsRawAws("eval 'echo ok;' 'aws s3 ls'")).toBe(true);
+  // inspected -c / pure info invocations are not blindly gated
+  expect(requestsDelete('bash -c "echo hi"')).toBe(false);
+  expect(requestsDelete('python --version')).toBe(false);
+  expect(requestsDelete('python3.11 --version')).toBe(false);
+  expect(requestsDelete('node -v')).toBe(false);
+});
+
+test('raw aws: substitution / env -S / find -exec / leading redirect / later line', () => {
+  expect(containsRawAws('echo $(aws s3 ls)')).toBe(true);
+  expect(containsRawAws('echo `aws s3 ls`')).toBe(true);
+  expect(containsRawAws("env -S 'aws s3 ls'")).toBe(true);
+  expect(containsRawAws("find . -exec sh -c 'aws s3 rm s3://p/$1' sh {} ;")).toBe(true);
+  expect(containsRawAws('> /dev/null aws s3 ls')).toBe(true);
+  expect(containsRawAws('echo ok\naws s3 ls')).toBe(true);
+  expect(containsRawAws('function f { aws s3 ls; }; f')).toBe(true);
+  // false-positive guards
+  expect(containsRawAws('echo $(date)')).toBe(false);
+  expect(containsRawAws('rg aws src > out.log')).toBe(false);
+});
+
+test('env -i / env HOME= that disarms the jail before a child is rejected', () => {
+  expect(tampersWithAwsEnv('env -i HOME=/Users/me PATH=/usr/bin python3 -c "import x"')).toBe(true);
+  expect(tampersWithAwsEnv('env -i python3 -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('env --ignore-environment python -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('env HOME=/Users/me python3 -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('bash -c "env -i python3 -c x"')).toBe(true); // nested
+  // false-positive guards: env that doesn't clear or re-point HOME is fine
+  expect(tampersWithAwsEnv('env FOO=bar rg pattern src')).toBe(false);
+  expect(tampersWithAwsEnv('env -C /tmp rg aws src')).toBe(false);
+  expect(tampersWithAwsEnv('env -u FOO rg src')).toBe(false);
+});
+
+test('export/declare of an AWS_* var is rejected (it re-points child processes)', () => {
+  expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c')).toBe(true);
+  expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c; python -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('declare -x AWS_PROFILE=other')).toBe(true);
+  expect(tampersWithAwsEnv('readonly AWS_PROFILE=other')).toBe(true);
+  expect(tampersWithAwsEnv('bash -c "export AWS_CONFIG_FILE=/tmp/c; aws s3 ls"')).toBe(true); // nested
+  // false-positive guards: non-assignment-builtin and non-AWS exports are fine
+  expect(tampersWithAwsEnv("rg 'AWS_PROFILE=' src")).toBe(false);
+  expect(tampersWithAwsEnv('export PATH=/usr/bin')).toBe(false);
+  expect(tampersWithAwsEnv('export FOO=bar')).toBe(false);
+});
+
+test('false-positive: AWS_* as an argument and here-doc bodies are not refused', () => {
+  // AWS_* only counts as a leading assignment, not an argument
+  expect(tampersWithAwsEnv("rg 'AWS_PROFILE=' src")).toBe(false);
+  expect(tampersWithAwsEnv('echo AWS_PROFILE=other')).toBe(false);
+  expect(tampersWithAwsEnv('AWS_PROFILE=other aws s3 ls')).toBe(true); // real leading still caught
+  // here-doc bodies are data, not commands
+  expect(requestsDelete("cat > notes.md <<'EOF'\nrm -rf build is dangerous\nEOF")).toBe(false);
+  expect(containsRawAws("cat > notes.md <<'EOF'\nrun aws s3 ls to list\nEOF")).toBe(false);
+  // a real command AFTER the here-doc still classifies
+  expect(requestsDelete("cat > a <<'EOF'\nx\nEOF\nrm -rf build")).toBe(true);
+  // tab-stripping `<<-` heredoc must close on its delimiter, not swallow the rest
+  expect(requestsDelete('cat <<-EOF\nbody\nEOF\nrm -rf build')).toBe(true);
+  expect(containsRawAws('cat <<-EOF\nbody\nEOF\naws s3 ls')).toBe(true);
+  expect(requestsDelete('cat <<-EOF\nrm -rf build is just text\nEOF')).toBe(false);
+});
