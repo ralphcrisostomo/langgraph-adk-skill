@@ -102,57 +102,73 @@ The bash tool lets chat search files, inspect content, and make approved repo
 changes. Keep this tool separate from `aws_cli` so raw AWS commands cannot escape
 the pinned AWS profile/region.
 
-- Run from the project working directory with capped stdout/stderr and a timeout.
-- Run bash commands immediately unless they request deletion or can't be classified.
+- Run from the **current working directory** — where the assistant was launched
+  (`resolveCwd()` = `process.env.CWD?.trim() || process.cwd()`; a globally-linked bin
+  runs with the caller's cwd, so it operates on whatever repo the user is in, with
+  `CWD` as an override) — with capped stdout/stderr and a timeout.
+- Run bash commands immediately unless they request deletion, mutate the AWS env, or
+  can't be classified.
 - Require approval for delete operations: `rm`, `rmdir`, `unlink`, `shred`,
-  `find -delete`/`--delete`, and subcommand deletes (`git rm`, `docker rm`/`rmi`,
-  `podman rm`, `kubectl delete`).
+  `find -delete`/`--delete`/`-exec rm`, and subcommand deletes (`git rm`,
+  **`git clean`**, `docker rm`/`rmi`, `podman rm`, `kubectl delete`), plus opaque
+  script/code interpreters (see the delete gate below).
 
 > **These gates have been adversarially reviewed. Every sub-point below is a real
 > bypass a code review caught in a naive implementation — do not simplify them away.**
 
 **Classify on a NORMALIZED token stream, not raw text.** One tokenizer feeds both
 the delete gate and the raw-AWS gate, so it must mirror what the shell actually
-runs or both gates are trivially bypassed. Beyond collapsing quoted segments to one
-token and emitting `; | && || & ( )` as their own tokens, it MUST normalize:
+runs or both gates are trivially bypassed. The authoritative, fully-hardened
+tokenizer is `reference/src/actions/shell-tokens.ts` — copy it. Beyond collapsing
+quoted segments to one token and emitting `; | && || & ( )` as their own tokens, it
+MUST normalize ALL of:
 - **Unquoted backslash escapes** — the shell drops them, so `r\m` / `a\ws` execute
-  `rm` / `aws`. Drop the backslash, keep the next char in the token.
+  `rm` / `aws`. Drop the backslash, keep the next char (and elide `\`+newline line
+  continuations).
 - **ANSI-C / locale quoting** — `$'rm'` / `$'aws'` execute `rm` / `aws`. Drop a `$`
   that immediately precedes a quote so the quoted body becomes the token.
+- **Command substitutions** — keep `$(…)` and `` `…` `` GROUPED in their token (so
+  the `$`/backtick marker survives for the opaque-head gate, and the body can be
+  recursed); see "argument-position substitution" below.
+- **`${…}` parameter expansion** — keep grouped (one token) so a bare `{`/`}` can be
+  treated as a brace-group separator without splitting `${VAR}`.
+- **Brace groups** — emit `{` and `}` as their own separator tokens at the character
+  level, so a brace GROUP / function body — even the compact `f(){rm;}` (no space) —
+  parses as its own commands instead of folding `{rm` into one token.
+- **Newlines = `;`** — a delete/aws on a later line is its own command, not an
+  argument of the first.
+- **Redirections** — emit `>`, `>>`, `<`, `2>`, `&>`, fd-duplications (`2>&1`), etc.
+  as marked tokens so a LEADING redirect (`> /dev/null rm -rf x`) isn't taken as the
+  head; the head walker skips the operator and its target.
+- **Here-docs** — capture the `<<DELIM` delimiter and SKIP the body lines as data
+  (not commands), so writing a doc/script that mentions `rm`/`aws` isn't gated.
+
+> The marker for redirection tokens MUST be written as a JS escape (`'\u0000'`),
+> NOT a raw NUL byte — a literal NUL makes git treat the file as binary and hides
+> the diff. A regression test (`reference/tests/global-bin-jsx.test.ts`) asserts no
+> source file contains a raw NUL.
 
 **Find the *command-position* token ("head") of each simple command.** "Is the
 first token `rm`/`aws`?" is the classic bug. Walk the tokens; for each simple
-command (reset on a separator) step transparently over `VAR=val` prefixes,
-pass-through wrappers (`env sudo nohup exec command builtin time timeout xargs
-setsid nice ionice stdbuf`), wrapper OPTIONS **and their value tokens**
-(`sudo -u root`, `env -C dir`, `nice -n 5`, `timeout -k 5`), and wrapper positionals
-(timeout's duration). The first remaining non-option token is the invoked program;
-everything after it is that command's arguments.
-```ts
-const SEPARATORS = new Set([';','|','||','&&','&','(',')']);
-const COMMAND_PREFIXES = new Set(['env','sudo','nohup','exec','command','builtin',
-  'time','timeout','xargs','setsid','nice','ionice','stdbuf']);
-// wrapper options that CONSUME the next token (so the real command isn't mistaken
-// for the value). `-i` is excluded: `env -i` takes no value.
-const WRAPPER_VALUE_FLAGS = new Set(['-u','-C','-S','-g','-h','-p','-r','-t','-U','-D',
-  '-R','-s','-k','-n','-c','-o','-e','-I','-L','-P','-d','-E','-a']);
-const stripPath = (t: string) => t.slice(t.lastIndexOf('/') + 1);  // /bin/rm -> rm
+command (reset on a separator OR a brace) step transparently over redirections (and
+their target), `VAR=val` prefixes, **compound-command keywords** (`if then elif else
+fi while until do done for select case esac in function time ! [[ ]]` — else
+`if true; then rm; fi` keeps `then` as the head), pass-through wrappers (`env sudo
+nohup exec command builtin time timeout xargs setsid nice ionice stdbuf`), wrapper
+OPTIONS **and their value tokens**, and wrapper positionals (timeout's duration).
+The first remaining non-option token is the invoked program. The authoritative
+walker is `reference/src/actions/bash-core.ts` (`simpleCommands`); copy it.
 
-function commandHeads(tokens: string[]): string[] {
-  const heads: string[] = [];
-  let pending = true;                                          // still seeking the command word?
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]!;
-    if (SEPARATORS.has(t)) { pending = true; continue; }
-    if (!pending) continue;                                    // inside the command's arguments
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue;          // VAR=val prefix
-    if (t.startsWith('-')) { if (WRAPPER_VALUE_FLAGS.has(t)) i++; continue; }
-    if (COMMAND_PREFIXES.has(stripPath(t))) continue;          // env/sudo/timeout/…
-    if (/^\d+[smhd]?$/.test(t)) continue;                      // timeout's duration positional
-    heads.push(t); pending = false;                            // the invoked program
-  }
-  return heads;
-}
+> **Wrapper value-flags MUST be keyed PER WRAPPER, not a flat union.** A flat set
+> (the old bug) wrongly treats a *valueless* flag for one wrapper as value-taking —
+> `sudo -E rm -rf x` and `command -p aws s3 ls` then swallow the real command and
+> skip the gate. Only consume the next token when the flag takes a value FOR THAT
+> wrapper (separated form; `--flag=value` is self-contained). Include short AND long
+> forms (`env --unset NAME`, `sudo --user NAME`, `nice --adjustment 5`,
+> `timeout --kill-after 5`).
+```ts
+// e.g.  env: -u -C -S --unset --chdir --split-string …   sudo: -u -g -C -D --user --chdir …
+const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = { env: new Set([...]), sudo: new Set([...]), /*…*/ };
 ```
 
 Then **TWO required layers PLUS an env-jailbreak refusal** — no single one holds:
@@ -172,58 +188,88 @@ Then **TWO required layers PLUS an env-jailbreak refusal** — no single one hol
    export function invokesAwsDirectly(cmd: string): boolean {
      return commandHeads(tokenize(cmd)).some((h) => stripPath(h) === 'aws');
    }
-   export function containsRawAws(cmd: string): boolean {
-     if (invokesAwsDirectly(cmd)) return true;
-     return nestedCommandStrings(tokenize(cmd)).some(containsRawAws);   // recurse `bash -c`/`eval`
-   }
-   // nestedCommandStrings: for a shell interpreter, scan its args skipping
-   //   SHELL_VALUE_FLAGS (+ their value) until a `-c`-style flag, then take the next
-   //   token as the nested command; keep scanning past non-flags; stop at a separator.
+   // `aws` as a head OR a shell-expanded head (`$(echo aws)` could resolve to aws),
+   // here or inside ANY nested context: shell `-c`/eval, command substitutions in
+   // argument position (`echo $(aws s3 ls)`), `env -S` strings, git-alias bodies, and
+   // `find -exec` slices — all collected by a shared `descend()`. A leading redirect
+   // (`> /dev/null aws …`) and a later-line `aws` are handled by the tokenizer.
+   // See the authoritative `containsRawAws` in reference/src/actions/bash-core.ts.
    ```
-2. **Disable AWS in the bash subprocess env (the real boundary).** Obfuscation
-   (`a''ws`, `$(printf aws)`, `$cmd`, base64, `xargs aws`) eventually beats ANY
-   string classifier, so the subprocess must be unable to authenticate at all. Drop
-   ALL inherited `AWS_*` (creds, profile, region, **and endpoint overrides**) and
-   point discovery at nothing:
+2. **Disable AWS in the bash subprocess env (the real boundary) — ALLOWLIST, jail
+   HOME, no startup files.** Obfuscation (`a''ws`, `$(printf aws)`, base64,
+   `xargs aws`) eventually beats ANY string classifier, so the subprocess must be
+   unable to authenticate at all. Use a STRICT ALLOWLIST (a denylist that only drops
+   `AWS_*` still hands the subprocess the model's `OPENAI_API_KEY`, `GH_TOKEN`, SSH,
+   etc. — a `env`/prompt-injected command echoes them back). Jail `HOME` to a scratch
+   dir so the AWS default chain (`$HOME/.aws`, SSO cache) finds nothing even if a
+   child unsets the pins. And run `zsh -f` (NO_RCS): `-lc` sources
+   `.zshenv`/`.zprofile` from HOME, and a writable jail HOME lets a command plant
+   `$HOME/.zprofile` with a hidden `rm`/`aws` the next invocation runs.
    ```ts
-   export function shellEnv(base = process.env): Record<string, string> {
+   const SHELL_ENV_ALLOWLIST = new Set(['PATH','HOME','USER','LOGNAME','SHELL','PWD',
+     'TMPDIR','TMP','TEMP','LANG','LANGUAGE','TZ','TERM','TERMINFO','COLORTERM',
+     'HOSTNAME','PAGER','LSCOLORS','LS_COLORS','EDITOR']);
+   export function shellEnv(base = process.env, home?: string): Record<string, string> {
      const env: Record<string, string> = {};
      for (const [k, v] of Object.entries(base)) {
-       if (v === undefined || k.startsWith('AWS_')) continue;  // drop creds/profile/region/config/endpoint
-       env[k] = v;
+       if (v === undefined) continue;
+       if (SHELL_ENV_ALLOWLIST.has(k) || k.startsWith('LC_')) env[k] = v;   // drop ALL secrets, not just AWS_*
      }
+     if (home !== undefined) env.HOME = home;                  // jail HOME away from the real ~/.aws
      env.AWS_CONFIG_FILE = '/dev/null';
      env.AWS_SHARED_CREDENTIALS_FILE = '/dev/null';
      env.AWS_EC2_METADATA_DISABLED = 'true';                   // block IMDS creds on EC2
      return env;
    }
-   // Bun.spawn(['/bin/zsh', '-lc', command], { cwd: process.cwd(), env: shellEnv(), … })
+   // const JAIL = mkdirSync(join(tmpdir(),'<app>-bash-home'),{recursive:true}) once at module load
+   // Bun.spawn(['/bin/zsh','-f','-c', command], { cwd: resolveCwd(), env: shellEnv(process.env, JAIL), … })
+   // resolveCwd = process.env.CWD?.trim() || process.cwd()   (invocation dir; CWD overrides)
    ```
-   NEVER pass `process.env` to the bash subprocess.
-3. **Refuse inline `AWS_*=` assignments — they JAILBREAK layer 2.** A per-command
-   assignment in `zsh -lc` overrides the spawn env, so
-   `AWS_CONFIG_FILE=~/.aws/config $cmd --profile other s3 ls` re-points the CLI at
-   the real credentials even though `shellEnv` set `/dev/null`. The bash tool must
-   refuse any command that sets an `AWS_*` var inline (recurse into nested shells):
+   NEVER pass `process.env` to the bash subprocess. **LIMITATION:** even this is
+   best-effort — a command with the user's filesystem privileges could still read
+   creds by ABSOLUTE path; a hard guarantee needs OS-level isolation (separate
+   user/container). Surface that to the user; don't claim the classifier is airtight.
+3. **Refuse any command that MUTATES the AWS env — assignment OR unset.** A
+   per-command assignment overrides the spawn env (`AWS_CONFIG_FILE=~/.aws/config
+   $cmd --profile other s3 ls` re-points the CLI at real creds), and an UNSET removes
+   the `/dev/null` pins so a child interpreter (`env -u AWS_CONFIG_FILE python -c
+   "…aws…"`) falls back to `~/.aws`. The authoritative `tampersWithAwsEnv`
+   (`reference/src/actions/bash-core.ts`) covers both. Two subtleties:
+   - **Assignment must be LEADING (command-prefix position), not any token.** A flat
+     `tokens.some(/^AWS_.../=/)` false-refuses `rg 'AWS_PROFILE=' src` and
+     `echo AWS_PROFILE=x` (the `AWS_*=` is an ARGUMENT). Walk to the head like
+     `commandHeads`; only an `AWS_*=` BEFORE the head (stepping over other `VAR=` /
+     wrappers) counts.
+   - **Unset** covers `env -u AWS_X`, `env --unset[=]AWS_X`, and the `unset` builtin.
+   - Recurse into every nested context (shell `-c`/eval, command substitutions,
+     `env -S`, `find -exec`, git-alias bodies) — see `descend()` in the reference.
    ```ts
-   export function assignsAwsEnv(cmd: string): boolean {
-     const tokens = tokenize(cmd);
-     if (tokens.some((t) => /^AWS_[A-Za-z0-9_]+=/.test(t))) return true;
-     return nestedCommandStrings(tokens).some(assignsAwsEnv);
-   }
-   // bash tool guard:  if (containsRawAws(cmd) || assignsAwsEnv(cmd)) return 'Refused: use aws_cli.';
+   // bash tool guard:  if (containsRawAws(cmd) || tampersWithAwsEnv(cmd)) return 'Refused: use aws_cli.';
    ```
 
-**The delete gate must also approval-gate the UNCLASSIFIABLE.** Beyond literal
-deletes, a command head that is shell-expanded (`$cmd`, `${cmd}`, `$(…)`, backticks)
-can't be classified — it may resolve to `rm`. Require approval rather than run it
-blind. Expansion only in ARGUMENTS (`cat $file`, `rg $pat src`) stays fine.
-```ts
-const hasExpansion = (t: string) => t.includes('$') || t.includes('`');
-// requestsDelete(cmd) === literal delete (token/flag/subcommand on the token stream)
-//   || commandHeads(tokenize(cmd)).some(hasExpansion)            // opaque command name
-//   || nestedCommandStrings(tokenize(cmd)).some(requestsDelete)  // `bash -c "rm …"`
-```
+**The delete gate (head-based) must catch every form a review has caught.** Use the
+authoritative `requestsDelete` in `reference/src/actions/bash-core.ts`. It is NOT a
+broad "any token is `rm`" scan (that false-flags `echo rm`); it walks `simpleCommands`
+and gates a command when:
+- its **head** is `rm`/`rmdir`/`unlink`/`shred`, OR is **shell-expanded** (`$cmd`,
+  `$(…)`, backticks — opaque, may resolve to `rm`; expansion only in ARGUMENTS like
+  `cat $file` stays fine);
+- it's a **subcommand delete** — `git rm`, **`git clean`**, `docker rm/rmi`,
+  `kubectl delete` — found AFTER skipping global value-flags (`git -C . rm` resolves
+  to `rm`, not `.`);
+- it's `find … -delete`, OR `find … -exec/-execdir/-ok <prog> …` whose exec
+  sub-command is a delete — INCLUDING `find … -exec sh -c 'rm …' {} ;` (recurse the
+  exec slice);
+- it **runs opaque code**: a shell interpreter WITHOUT `-c` (reads stdin/script:
+  `printf 'rm' | sh`, `bash deploy.sh`), or a CODE interpreter (`python -c
+  'os.remove(...)'`, `node -e 'fs.rmSync(...)'`, `ruby`/`perl`/`bun`/… — gate any
+  invocation except a pure `--version`/`--help`).
+
+And it RECURSES into every nested context — shell `-c`/eval strings, **command
+substitutions in argument position** (`echo $(rm -rf x)`), `env -S` strings,
+git-alias bodies (`git -c alias.x='!rm …' x`), and `find -exec` slices — via a
+shared `descend()`. Here-doc bodies are NOT scanned (the tokenizer skips them), so
+writing a doc that mentions `rm` isn't gated.
 
 - Bind delete approval the same way as AWS writes: one-shot TTY `askConfirm`,
   one-shot non-TTY auto-denies, sessions use `helpers.ask` (explicit `y`/`yes`).
@@ -254,21 +300,20 @@ const MANAGED_BOOL_FLAGS  = new Set(['--no-sign-request']);
 // account boundary — strip it so the command re-runs signed under the profile.
 ```
 
-**1b. Pin identity in the `aws_cli` subprocess env, too.** Stripping `--endpoint-url`
-from the args is NOT enough — an inherited `AWS_ENDPOINT_URL` / `AWS_ENDPOINT_URL_*`
-env var redirects calls off real AWS just the same (a code review caught this). The
-`aws_cli` env must drop ambient identity AND endpoint overrides so the pinned
-`--profile`/`--region` fully determine the call, while KEEPING the config-file
-locations so the profile resolves:
+**1b. Pin identity in the `aws_cli` subprocess env, too — drop EVERY `AWS_*`.** A
+denylist of specific vars keeps missing credential SOURCES (a review caught several):
+`AWS_ENDPOINT_URL[_*]` (redirects calls off real AWS), `AWS_ROLE_ARN` /
+`AWS_WEB_IDENTITY_TOKEN_FILE`, the container-cred vars `AWS_CONTAINER_CREDENTIALS_*`,
+SSO, and caller-controlled `AWS_CONFIG_FILE` / `AWS_SHARED_CREDENTIALS_FILE` (which
+could repoint the managed profile at another account). Drop them ALL — the pinned
+`--profile`/`--region` flags plus the CLI's trusted default config (`~/.aws/config`,
+`~/.aws/credentials`) then fully determine the call:
 ```ts
 export function awsEnv(base = process.env): Record<string, string> {
-  const drop = new Set(['AWS_PROFILE','AWS_DEFAULT_PROFILE','AWS_ACCESS_KEY_ID',
-    'AWS_SECRET_ACCESS_KEY','AWS_SESSION_TOKEN','AWS_REGION','AWS_DEFAULT_REGION']);
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(base)) {
-    if (v === undefined || drop.has(k)) continue;
-    if (k === 'AWS_ENDPOINT_URL' || k.startsWith('AWS_ENDPOINT_URL_')) continue;   // exfil vector
-    env[k] = v;                          // keeps AWS_CONFIG_FILE / AWS_SHARED_CREDENTIALS_FILE
+    if (v === undefined || k.startsWith('AWS_')) continue;   // no ambient AWS source reaches the CLI
+    env[k] = v;
   }
   return env;
 }
@@ -316,20 +361,33 @@ regression test, not a hypothetical:
   (`env -i aws …`, `env -i AWS_CONFIG_FILE=x aws …`, `sudo -u root aws …`,
   `timeout 5 aws …`, `nice -n 5 aws …`, `bash -o pipefail -c "aws …"`);
 - **normalization** bypasses (`r\m …`, `a\ws …`, `$'rm' …`, `$'aws' …`);
-- **shell-expansion**: `cmd=rm; $cmd -rf x` and `` `echo rm` -rf x `` require
-  approval (`requestsDelete` true);
-- **inline-assignment jailbreak**: `AWS_CONFIG_FILE=… $cmd … s3 ls` is refused
-  (`assignsAwsEnv` true);
+- **shell-expansion**: `cmd=rm; $cmd -rf x` and `` `echo rm` -rf x `` require approval;
+- **per-wrapper false-consume**: `sudo -E rm -rf x`, `command -p aws s3 ls` (the flat
+  WRAPPER_VALUE_FLAGS bug); long-form `env --unset … aws`, `sudo --chdir /tmp aws`;
+- **subcommand-after-global-option**: `git -C . rm`, `kubectl -n default delete`,
+  `docker --context prod rm`; plus **`git clean -fd`**;
+- **find -exec**: `find … -exec rm {} +`, `find … -exec sh -c 'rm …' {} ;`;
+- **substitutions in argument position**: `echo $(rm -rf x)`, `echo $(aws s3 ls)`;
+  **`env -S 'rm …'`**; **git aliases** `git -c alias.x='!rm …' x`;
+- **newlines / braces / keywords**: `echo ok\nrm -rf x`, `f(){rm;}; f`,
+  `if true; then rm; fi`; **leading redirections** `> /dev/null rm`, `2>&1 aws s3 ls`;
+- **interpreters**: `printf 'rm' | sh`, `bash deploy.sh`, `python -c 'os.remove(…)'`,
+  `node -e 'fs.rmSync(…)'` (gated); `python --version`, `node -v` (NOT gated);
+- **inline-assignment / unset jailbreak**: `AWS_CONFIG_FILE=… $cmd … s3 ls`,
+  `env -u AWS_CONFIG_FILE python -c "…"`, `unset AWS_CONFIG_FILE; …` are refused;
 - **must-NOT-reject** (false-positive guards): `rg aws src`, `bash -c "rg aws src"`,
-  `timeout 5 rg aws src`, `sudo -u root rg aws src`, `bash -o pipefail -c "rg aws src"`,
-  `cat $file`, `FOO=bar rg pattern src`.
+  `timeout 5 rg aws src`, `sudo -u root rg aws src`, `cat $file`, `FOO=bar rg pat src`,
+  `echo rm`, `rg 'AWS_PROFILE=' src`, `echo hi > out.log`, `cat ${HOME}/notes.txt`,
+  and a here-doc body that mentions `rm`/`aws s3 ls`.
 
-Test `shellEnv` drops every inherited `AWS_*` (incl. the config-file vars) and sets
-the `/dev/null` discovery + `AWS_EC2_METADATA_DISABLED`; test `awsEnv` drops ambient
-creds/profile/region + `AWS_ENDPOINT_URL[_*]` while KEEPING the config-file
-locations. Add tests for `loadRepoInstructions` with present, missing, and blank
-`AGENTS.md`, plus `buildSystemPrompt` including the fenced repository instructions.
-See `reference/tests` for the shape.
+Test `shellEnv` drops every inherited `AWS_*` AND every non-AWS secret (allowlist —
+e.g. `OPENAI_API_KEY`, `GH_TOKEN`), keeps `PATH`/`HOME`/`LC_*`, sets the `/dev/null`
+discovery + `AWS_EC2_METADATA_DISABLED`, and jails `HOME` when a home override is
+given; test that `runBash` does NOT source a `.zshenv` planted in the jail HOME
+(`zsh -f`). Test `awsEnv` drops EVERY `AWS_*` (incl. `AWS_ROLE_ARN`,
+`AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_CONTAINER_CREDENTIALS_*`, and the config-file
+paths). Add tests for `loadRepoInstructions` (present/missing/blank `AGENTS.md`) and
+`buildSystemPrompt`. See `reference/tests` for the shape.
 
 ## Human-in-the-loop input (critical)
 
