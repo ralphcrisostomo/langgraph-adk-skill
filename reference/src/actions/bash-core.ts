@@ -72,10 +72,12 @@ const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
 
 // Compound-command reserved words. In COMMAND POSITION they introduce a list rather
 // than being the command, so step over them — else `if true; then rm; fi` keeps
-// `then` as the head and hides `rm`. `{`/`}` are already separators.
+// `then` as the head and hides `rm`. `{`/`}` are already separators. `time` is NOT
+// here — it's a COMMAND_PREFIX so the walker also records `wrapper='time'` and skips
+// its `--format` value (`time --format '%E' rm x` must resolve to `rm`).
 const CONTROL_KEYWORDS = new Set([
   'if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'do', 'done',
-  'for', 'select', 'case', 'esac', 'in', 'function', 'time', '!', '[[', ']]',
+  'for', 'select', 'case', 'esac', 'in', 'function', '!', '[[', ']]',
 ]);
 
 const hasShellExpansion = (token: string): boolean => token.includes('$') || token.includes('`');

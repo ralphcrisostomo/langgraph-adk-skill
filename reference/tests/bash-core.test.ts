@@ -245,6 +245,13 @@ test('delete: newlines, brace/function bodies, compound blocks, redirections', (
   expect(requestsDelete('echo hi > out.log')).toBe(false);
 });
 
+test('the time wrapper --format value does not hide the real command', () => {
+  expect(containsRawAws("time --format '%E' aws s3 ls")).toBe(true);
+  expect(requestsDelete("time --format '%E' rm x")).toBe(true);
+  expect(requestsDelete('time rm x')).toBe(true); // bare time prefix
+  expect(containsRawAws("time --format '%E' rg aws src")).toBe(false); // false-positive guard
+});
+
 test('delete: interpreters running opaque code/scripts are gated', () => {
   expect(requestsDelete("printf 'rm -rf build\\n' | sh")).toBe(true);
   expect(requestsDelete('bash deploy.sh')).toBe(true);
