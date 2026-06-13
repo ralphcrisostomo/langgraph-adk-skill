@@ -45,6 +45,11 @@ const CODE_INTERPRETERS = new Set([
   'python', 'python2', 'python3', 'node', 'bun', 'deno', 'ruby', 'perl', 'php',
   'Rscript', 'pwsh', 'powershell', 'osascript', 'lua', 'luajit', 'tclsh', 'groovy',
 ]);
+// Versioned binaries are the installed names on many systems (`python3.11`,
+// `ruby2.7`, `php8.2`) — match them too, else the gate misses the real interpreter.
+const VERSIONED_INTERPRETER = /^(python|ruby|perl|php)[\d.]*$/;
+const isCodeInterpreter = (head: string): boolean =>
+  CODE_INTERPRETERS.has(head) || VERSIONED_INTERPRETER.test(head);
 const INTERP_INFO_FLAGS = new Set(['--version', '-V', '-v', '--help', '-h']);
 
 // Pass-through wrappers: the REAL command is whatever they invoke, so step over them
@@ -157,8 +162,9 @@ export function nestedCommandStrings(tokens: string[]): string[] {
   for (const c of simpleCommands(tokens)) {
     const head = stripPath(c.head);
     if (head === 'eval') {
-      const s = c.args.find((a) => !a.startsWith('-'));
-      if (s !== undefined) out.push(s);
+      // eval concatenates ALL its arguments and evaluates the result, so
+      // `eval 'echo ok;' 'rm -rf build'` runs the rm — join them, don't take the first.
+      if (c.args.length) out.push(c.args.join(' '));
       continue;
     }
     if (!SHELL_INTERPRETERS.has(head)) continue;
@@ -330,7 +336,7 @@ function runsOpaqueCode(head: string, args: string[]): boolean {
   if (SHELL_INTERPRETERS.has(head)) {
     return !args.some((a) => a === '-c' || /^-[A-Za-z]*c$/.test(a));
   }
-  if (CODE_INTERPRETERS.has(head)) {
+  if (isCodeInterpreter(head)) {
     return !(args.length > 0 && args.every((a) => INTERP_INFO_FLAGS.has(a)));
   }
   return false;

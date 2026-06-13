@@ -271,9 +271,17 @@ test('delete: interpreters running opaque code/scripts are gated', () => {
   expect(requestsDelete('python -c \'import os; os.remove("x")\'')).toBe(true);
   expect(requestsDelete('node -e \'require("fs").rmSync("x")\'')).toBe(true);
   expect(requestsDelete('bun run build')).toBe(true);
+  // versioned interpreter binaries (python3.11, ruby2.7, php8.2) are gated too
+  expect(requestsDelete('python3.11 -c \'import shutil; shutil.rmtree("build")\'')).toBe(true);
+  expect(requestsDelete('python3.12 build.py')).toBe(true);
+  expect(requestsDelete('ruby2.7 cleanup.rb')).toBe(true);
+  // multi-arg eval concatenates: the second arg still runs
+  expect(requestsDelete("eval 'echo ok;' 'rm -rf build'")).toBe(true);
+  expect(containsRawAws("eval 'echo ok;' 'aws s3 ls'")).toBe(true);
   // inspected -c / pure info invocations are not blindly gated
   expect(requestsDelete('bash -c "echo hi"')).toBe(false);
   expect(requestsDelete('python --version')).toBe(false);
+  expect(requestsDelete('python3.11 --version')).toBe(false);
   expect(requestsDelete('node -v')).toBe(false);
 });
 
