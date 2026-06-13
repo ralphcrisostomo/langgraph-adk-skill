@@ -488,13 +488,51 @@ function assignsAwsViaBuiltin(tokens: string[]): boolean {
   return false;
 }
 
+// `env` short flags that take a value (so a trailing letter in a cluster is that
+// flag's value, not a standalone option).
+const ENV_VALUE_SHORT = new Set(['u', 'C', 'S']);
+function envClusterClearsEnv(token: string): boolean {
+  for (let p = 1; p < token.length; p++) {
+    const ch = token[p]!;
+    if (ch === 'i') return true; // -i / -iu / -vi : ignore-environment
+    if (ENV_VALUE_SHORT.has(ch)) return false; // rest of the cluster is this flag's value
+  }
+  return false;
+}
+
+// `env` that DISARMS the bash env jail: `env -i`/`--ignore-environment`/`-` clears
+// the inherited (pinned, HOME-jailed) env, and `env HOME=…` re-points the credential
+// home — either way a child interpreter then reaches the real ~/.aws. `env` is a
+// pass-through wrapper (stepped over by simpleCommands), so scan the token stream.
+function envDisarmsJail(tokens: string[]): boolean {
+  for (let i = 0; i < tokens.length; i++) {
+    if (stripPath(tokens[i]!) !== 'env') continue;
+    for (let j = i + 1; j < tokens.length; j++) {
+      const a = tokens[j]!;
+      if (SEPARATORS.has(a)) break;
+      if (a === '-' || a === '--ignore-environment') return true;
+      if (a.startsWith('-')) {
+        if (!a.startsWith('--') && envClusterClearsEnv(a)) return true;
+        if (wrapperFlagConsumesNext('env', a)) j++; // skip a value-flag's value
+        continue;
+      }
+      if (/^HOME=/.test(a)) return true; // re-points the credential home
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue; // other NAME=VAL assignment
+      break; // env's command word
+    }
+  }
+  return false;
+}
+
 // Refuse any command that mutates the AWS env — inline assignment (re-point creds),
-// `export`/`declare` of an AWS_* var, or unset (disarm the pins for a child
-// interpreter). Recurse into every nested context so a buried form is caught too.
+// `export`/`declare` of an AWS_* var, unset (disarm the pins for a child
+// interpreter), or `env -i`/`env HOME=…` (rebuild the env / re-point HOME). Recurse
+// into every nested context so a buried form is caught too.
 function tampersTokens(tokens: string[]): boolean {
   if (hasLeadingAwsAssignment(tokens)) return true;
   if (assignsAwsViaBuiltin(tokens)) return true;
   if (unsetsAwsEnv(tokens)) return true;
+  if (envDisarmsJail(tokens)) return true;
   if (descend(tokens).some((s) => tampersTokens(tokenize(s)))) return true;
   return findExecTokenSlices(tokens).some(tampersTokens);
 }

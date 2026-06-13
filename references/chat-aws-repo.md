@@ -245,6 +245,9 @@ Then **TWO required layers PLUS an env-jailbreak refusal** — no single one hol
      assignment BUILTIN (`export AWS_CONFIG_FILE=… ; child-that-runs-aws`) — so ALSO
      catch `AWS_*=`/`AWS_*` arguments to `export`/`declare`/`typeset`/`local`/`readonly`.
    - **Unset** covers `env -u AWS_X`, `env --unset[=]AWS_X`, and the `unset` builtin.
+   - **env jail disarm**: `env -i`/`--ignore-environment` rebuilds the env (wiping the
+     `/dev/null` pins + jailed HOME), and `env HOME=… <child>` re-points the credential
+     home — both let a child interpreter reach the real `~/.aws`. Refuse them.
    - Recurse into every nested context (shell `-c`/eval, command substitutions,
      `env -S`, `find -exec`, git-alias bodies) — see `descend()` in the reference.
    ```ts

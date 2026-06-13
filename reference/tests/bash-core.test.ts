@@ -298,6 +298,18 @@ test('raw aws: substitution / env -S / find -exec / leading redirect / later lin
   expect(containsRawAws('rg aws src > out.log')).toBe(false);
 });
 
+test('env -i / env HOME= that disarms the jail before a child is rejected', () => {
+  expect(tampersWithAwsEnv('env -i HOME=/Users/me PATH=/usr/bin python3 -c "import x"')).toBe(true);
+  expect(tampersWithAwsEnv('env -i python3 -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('env --ignore-environment python -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('env HOME=/Users/me python3 -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('bash -c "env -i python3 -c x"')).toBe(true); // nested
+  // false-positive guards: env that doesn't clear or re-point HOME is fine
+  expect(tampersWithAwsEnv('env FOO=bar rg pattern src')).toBe(false);
+  expect(tampersWithAwsEnv('env -C /tmp rg aws src')).toBe(false);
+  expect(tampersWithAwsEnv('env -u FOO rg src')).toBe(false);
+});
+
 test('export/declare of an AWS_* var is rejected (it re-points child processes)', () => {
   expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c')).toBe(true);
   expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c; python -c "x"')).toBe(true);
