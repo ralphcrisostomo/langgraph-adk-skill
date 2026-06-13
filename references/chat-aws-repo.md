@@ -241,7 +241,9 @@ Then **TWO required layers PLUS an env-jailbreak refusal** — no single one hol
      `tokens.some(/^AWS_.../=/)` false-refuses `rg 'AWS_PROFILE=' src` and
      `echo AWS_PROFILE=x` (the `AWS_*=` is an ARGUMENT). Walk to the head like
      `commandHeads`; only an `AWS_*=` BEFORE the head (stepping over other `VAR=` /
-     wrappers) counts.
+     wrappers) counts. BUT the leading check then MISSES an `AWS_*=` passed to an
+     assignment BUILTIN (`export AWS_CONFIG_FILE=… ; child-that-runs-aws`) — so ALSO
+     catch `AWS_*=`/`AWS_*` arguments to `export`/`declare`/`typeset`/`local`/`readonly`.
    - **Unset** covers `env -u AWS_X`, `env --unset[=]AWS_X`, and the `unset` builtin.
    - Recurse into every nested context (shell `-c`/eval, command substitutions,
      `env -S`, `find -exec`, git-alias bodies) — see `descend()` in the reference.

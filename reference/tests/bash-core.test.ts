@@ -286,6 +286,18 @@ test('raw aws: substitution / env -S / find -exec / leading redirect / later lin
   expect(containsRawAws('rg aws src > out.log')).toBe(false);
 });
 
+test('export/declare of an AWS_* var is rejected (it re-points child processes)', () => {
+  expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c')).toBe(true);
+  expect(tampersWithAwsEnv('export AWS_CONFIG_FILE=/tmp/c; python -c "x"')).toBe(true);
+  expect(tampersWithAwsEnv('declare -x AWS_PROFILE=other')).toBe(true);
+  expect(tampersWithAwsEnv('readonly AWS_PROFILE=other')).toBe(true);
+  expect(tampersWithAwsEnv('bash -c "export AWS_CONFIG_FILE=/tmp/c; aws s3 ls"')).toBe(true); // nested
+  // false-positive guards: non-assignment-builtin and non-AWS exports are fine
+  expect(tampersWithAwsEnv("rg 'AWS_PROFILE=' src")).toBe(false);
+  expect(tampersWithAwsEnv('export PATH=/usr/bin')).toBe(false);
+  expect(tampersWithAwsEnv('export FOO=bar')).toBe(false);
+});
+
 test('false-positive: AWS_* as an argument and here-doc bodies are not refused', () => {
   // AWS_* only counts as a leading assignment, not an argument
   expect(tampersWithAwsEnv("rg 'AWS_PROFILE=' src")).toBe(false);

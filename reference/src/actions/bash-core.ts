@@ -462,11 +462,28 @@ function unsetsAwsEnv(tokens: string[]): boolean {
   return false;
 }
 
-// Refuse any command that mutates the AWS env — inline assignment (re-point creds)
-// or unset (disarm the pins for a child interpreter). Recurse into every nested
-// context so a buried form is caught too.
+// Shell builtins that SET env vars from their arguments — `export AWS_X=v`,
+// `declare -x AWS_X=v`, `typeset`/`local`/`readonly AWS_X=v` — re-point the CLI just
+// like a leading assignment. The `AWS_*=` here is an ARGUMENT to the builtin, so the
+// leading-position check misses it; catch it explicitly. (An `AWS_*=` argument to a
+// NON-assignment program — `rg 'AWS_PROFILE=' src` — is data and stays allowed.)
+const ASSIGNMENT_BUILTINS = new Set(['export', 'declare', 'typeset', 'local', 'readonly']);
+
+function assignsAwsViaBuiltin(tokens: string[]): boolean {
+  for (const c of simpleCommands(tokens)) {
+    if (!ASSIGNMENT_BUILTINS.has(stripPath(c.head))) continue;
+    // `export AWS_X=v` (set) or `export AWS_X` (mark an existing AWS_ var for export).
+    if (c.args.some((a) => /^AWS_[A-Za-z0-9_]+=?/.test(a))) return true;
+  }
+  return false;
+}
+
+// Refuse any command that mutates the AWS env — inline assignment (re-point creds),
+// `export`/`declare` of an AWS_* var, or unset (disarm the pins for a child
+// interpreter). Recurse into every nested context so a buried form is caught too.
 function tampersTokens(tokens: string[]): boolean {
   if (hasLeadingAwsAssignment(tokens)) return true;
+  if (assignsAwsViaBuiltin(tokens)) return true;
   if (unsetsAwsEnv(tokens)) return true;
   if (descend(tokens).some((s) => tampersTokens(tokenize(s)))) return true;
   return findExecTokenSlices(tokens).some(tampersTokens);
