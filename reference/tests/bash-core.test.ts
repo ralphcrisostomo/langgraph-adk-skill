@@ -280,4 +280,8 @@ test('false-positive: AWS_* as an argument and here-doc bodies are not refused',
   expect(containsRawAws("cat > notes.md <<'EOF'\nrun aws s3 ls to list\nEOF")).toBe(false);
   // a real command AFTER the here-doc still classifies
   expect(requestsDelete("cat > a <<'EOF'\nx\nEOF\nrm -rf build")).toBe(true);
+  // tab-stripping `<<-` heredoc must close on its delimiter, not swallow the rest
+  expect(requestsDelete('cat <<-EOF\nbody\nEOF\nrm -rf build')).toBe(true);
+  expect(containsRawAws('cat <<-EOF\nbody\nEOF\naws s3 ls')).toBe(true);
+  expect(requestsDelete('cat <<-EOF\nrm -rf build is just text\nEOF')).toBe(false);
 });

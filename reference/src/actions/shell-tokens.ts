@@ -210,6 +210,13 @@ export function tokenize(input: string): string[] {
         op += input[i]!;
         i++;
       }
+      // `<<-` (tab-stripping here-doc): the `-` isn't an operator char, so fold it in
+      // explicitly — else the delimiter is read as `-EOF`, never closes, and the rest
+      // of the script is swallowed as body (commands after it would skip the gate).
+      if (op === '<<' && input[i] === '-') {
+        op += '-';
+        i++;
+      }
       tokens.push(REDIR + op);
       // here-doc (`<<DELIM` / `<<-DELIM`): capture the delimiter word so its body
       // (lines until DELIM) is skipped as data, not tokenized as commands.
