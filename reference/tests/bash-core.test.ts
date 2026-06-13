@@ -258,6 +258,16 @@ test('grouped short wrapper options (sudo -Eu root) do not hide the real command
   expect(containsRawAws('sudo -Eu root rg aws src')).toBe(false);
 });
 
+test('zsh precommand modifiers (noglob/nocorrect/repeat) do not hide the command', () => {
+  expect(requestsDelete('noglob rm -rf build')).toBe(true);
+  expect(requestsDelete('nocorrect rm -rf build')).toBe(true);
+  expect(requestsDelete('repeat 1 rm -rf build')).toBe(true);
+  expect(containsRawAws('noglob aws s3 ls')).toBe(true);
+  expect(containsRawAws('repeat 3 aws s3 ls')).toBe(true);
+  // false-positive guard: the modifier doesn't make an argument the head
+  expect(requestsDelete('noglob echo rm')).toBe(false);
+});
+
 test('the time wrapper --format value does not hide the real command', () => {
   expect(containsRawAws("time --format '%E' aws s3 ls")).toBe(true);
   expect(requestsDelete("time --format '%E' rm x")).toBe(true);

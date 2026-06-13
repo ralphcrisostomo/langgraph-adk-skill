@@ -57,6 +57,8 @@ const INTERP_INFO_FLAGS = new Set(['--version', '-V', '-v', '--help', '-h']);
 const COMMAND_PREFIXES = new Set([
   'env', 'sudo', 'nohup', 'exec', 'command', 'builtin',
   'time', 'timeout', 'xargs', 'setsid', 'nice', 'ionice', 'stdbuf',
+  // zsh precommand modifiers — they run the command that follows (the runner is zsh).
+  'noglob', 'nocorrect',
 ]);
 
 // Wrapper options that CONSUME the next token, keyed PER WRAPPER (short + long
@@ -83,6 +85,9 @@ const WRAPPER_VALUE_FLAGS: Record<string, Set<string>> = {
 const CONTROL_KEYWORDS = new Set([
   'if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'do', 'done',
   'for', 'select', 'case', 'esac', 'in', 'function', '!', '[[', ']]',
+  // zsh loop/reserved words: `repeat N <cmd>` (N is skipped by the number rule),
+  // `coproc <cmd>` — the real command follows.
+  'repeat', 'coproc',
 ]);
 
 const hasShellExpansion = (token: string): boolean => token.includes('$') || token.includes('`');
