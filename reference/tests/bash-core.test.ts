@@ -224,6 +224,9 @@ test('delete: git clean / find -exec / subcommand-after-global-option', () => {
 test('delete: command substitution / env -S / git alias bodies', () => {
   expect(requestsDelete('echo $(rm -rf output)')).toBe(true);
   expect(requestsDelete('echo `rm -rf output`')).toBe(true);
+  // quoted paren inside the substitution must not end it early
+  expect(requestsDelete("echo $(printf ')' ; rm -rf build)")).toBe(true);
+  expect(containsRawAws("echo $(printf ')' ; aws s3 ls)")).toBe(true);
   expect(requestsDelete("env -S 'rm -rf build'")).toBe(true);
   expect(requestsDelete("git -c alias.clean='!rm -rf build' clean")).toBe(true);
   expect(requestsDelete('echo $(date)')).toBe(false);

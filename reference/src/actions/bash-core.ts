@@ -177,6 +177,21 @@ export function substitutionBodies(tokens: string[]): string[] {
         let body = '';
         while (i < t.length && depth > 0) {
           const c = t[i]!;
+          // Quote-aware: a quoted paren must not change depth (mirrors the tokenizer),
+          // else `$(printf ')' ; rm …)` extracts only `printf '` and the rm escapes.
+          if (c === "'" || c === '"') {
+            body += c;
+            i++;
+            while (i < t.length && t[i] !== c) {
+              body += t[i]!;
+              i++;
+            }
+            if (i < t.length) {
+              body += t[i]!;
+              i++;
+            }
+            continue;
+          }
           if (c === '(') depth++;
           else if (c === ')') {
             depth--;

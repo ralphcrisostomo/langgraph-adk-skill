@@ -82,12 +82,27 @@ export function tokenize(input: string): string[] {
     }
     // Command substitution $( … ) — keep grouped so the token retains its `$`
     // (drives the "opaque head" gate) and an inner `(`/`)` isn't read as a separator.
+    // The depth scan must RESPECT QUOTES, else a quoted paren (`$(printf ')' ; rm …)`)
+    // ends the substitution early and the trailing `rm` escapes the body re-check.
     if (ch === '$' && input[i + 1] === '(') {
       add('$(');
       i += 2;
       let depth = 1;
       while (i < n && depth > 0) {
         const c = input[i]!;
+        if (c === "'" || c === '"') {
+          add(c);
+          i++;
+          while (i < n && input[i] !== c) {
+            add(input[i]!);
+            i++;
+          }
+          if (i < n) {
+            add(input[i]!);
+            i++;
+          }
+          continue;
+        }
         if (c === '(') depth++;
         else if (c === ')') depth--;
         add(c);
@@ -97,12 +112,26 @@ export function tokenize(input: string): string[] {
     }
     // Parameter expansion ${ … } — keep grouped so `${VAR}` stays one token and a
     // bare `{`/`}` below can be treated as a brace-group separator without splitting it.
+    // Quote-aware so a quoted `}` (`${x:-'}'}`) doesn't end it early.
     if (ch === '$' && input[i + 1] === '{') {
       add('${');
       i += 2;
       let depth = 1;
       while (i < n && depth > 0) {
         const c = input[i]!;
+        if (c === "'" || c === '"') {
+          add(c);
+          i++;
+          while (i < n && input[i] !== c) {
+            add(input[i]!);
+            i++;
+          }
+          if (i < n) {
+            add(input[i]!);
+            i++;
+          }
+          continue;
+        }
         if (c === '{') depth++;
         else if (c === '}') depth--;
         add(c);

@@ -129,7 +129,9 @@ MUST normalize ALL of:
   that immediately precedes a quote so the quoted body becomes the token.
 - **Command substitutions** — keep `$(…)` and `` `…` `` GROUPED in their token (so
   the `$`/backtick marker survives for the opaque-head gate, and the body can be
-  recursed); see "argument-position substitution" below.
+  recursed); see "argument-position substitution" below. The `$(…)` depth scan MUST
+  respect quotes — a quoted paren (`$(printf ')' ; rm …)`) otherwise ends the
+  substitution early and the trailing `rm` escapes the body re-check.
 - **`${…}` parameter expansion** — keep grouped (one token) so a bare `{`/`}` can be
   treated as a brace-group separator without splitting `${VAR}`.
 - **Brace groups** — emit `{` and `}` as their own separator tokens at the character
