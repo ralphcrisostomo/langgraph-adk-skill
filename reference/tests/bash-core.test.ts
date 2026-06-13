@@ -245,6 +245,15 @@ test('delete: newlines, brace/function bodies, compound blocks, redirections', (
   expect(requestsDelete('echo hi > out.log')).toBe(false);
 });
 
+test('grouped short wrapper options (sudo -Eu root) do not hide the real command', () => {
+  expect(containsRawAws('sudo -Eu root aws s3 ls')).toBe(true);
+  expect(requestsDelete('sudo -Eu root rm -rf x')).toBe(true);
+  expect(containsRawAws('sudo -u root aws s3 ls')).toBe(true); // ungrouped still works
+  // attached value (`-uroot`) and a false-positive guard
+  expect(containsRawAws('sudo -uroot rg aws src')).toBe(false);
+  expect(containsRawAws('sudo -Eu root rg aws src')).toBe(false);
+});
+
 test('the time wrapper --format value does not hide the real command', () => {
   expect(containsRawAws("time --format '%E' aws s3 ls")).toBe(true);
   expect(requestsDelete("time --format '%E' rm x")).toBe(true);

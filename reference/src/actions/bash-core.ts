@@ -82,6 +82,24 @@ const CONTROL_KEYWORDS = new Set([
 
 const hasShellExpansion = (token: string): boolean => token.includes('$') || token.includes('`');
 
+// Does this wrapper option token take the NEXT token as its value? Handles long
+// `--flag` (separated form; `--flag=value` is self-contained) AND grouped short
+// clusters — `sudo -Eu root` is `-E -u root`, so a value-flag whose letter is LAST
+// in the cluster consumes the next token; if more chars follow the value is attached
+// (`-uroot`) and nothing extra is consumed.
+function wrapperFlagConsumesNext(wrapper: string, token: string): boolean {
+  const vf = WRAPPER_VALUE_FLAGS[wrapper];
+  if (!vf) return false;
+  if (token.startsWith('--')) {
+    const eq = token.indexOf('=');
+    return eq < 0 && vf.has(token);
+  }
+  for (let p = 1; p < token.length; p++) {
+    if (vf.has('-' + token[p]!)) return p === token.length - 1;
+  }
+  return false;
+}
+
 // Split a token stream into simple commands as { head, args }. For each command
 // (reset on a separator) step transparently over redirections, `VAR=val` prefixes,
 // compound-command keywords, pass-through wrappers and their value tokens, and the
@@ -113,10 +131,7 @@ export function simpleCommands(tokens: string[]): SimpleCommand[] {
     }
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue; // VAR=val prefix
     if (t.startsWith('-')) {
-      const eq = t.indexOf('=');
-      const base = eq >= 0 ? t.slice(0, eq) : t;
-      // inline `--flag=value` is self-contained; separated value-flag consumes next.
-      if (eq < 0 && WRAPPER_VALUE_FLAGS[wrapper]?.has(base)) i++;
+      if (wrapperFlagConsumesNext(wrapper, t)) i++; // `sudo -u root`, `sudo -Eu root`, …
       continue;
     }
     if (CONTROL_KEYWORDS.has(t)) continue;
@@ -166,8 +181,15 @@ export function nestedCommandStrings(tokens: string[]): string[] {
 // Command-substitution bodies inside any token (`$(…)`, backticks). A substitution
 // in ARGUMENT position (`echo $(rm -rf x)`) runs before the outer command, so its
 // body must be gated too. Extracted from raw token text (substitution markers are
-// kept by the tokenizer); single-quoted substitutions don't run, so flagging them
-// only over-asks for approval. Recursion terminates (each body is a substring).
+// kept by the tokenizer); recursion terminates (each body is a substring).
+//
+// KNOWN over-approximation (safe): a SINGLE-quoted `'$(rm)'` is inert at this level
+// but the tokenizer strips the quotes, so it's still flagged — `echo '$(rm)'`
+// over-asks for approval. This is deliberate: the SAME token also feeds
+// nestedCommandStrings, and `bash -c '$(rm)'` IS re-expanded by the inner shell and
+// MUST stay gated. Suppressing single-quoted substitutions here (without separate
+// per-token quote provenance) would turn that into an UNDER-gate — do not "fix" it
+// by neutralizing quoted markers.
 export function substitutionBodies(tokens: string[]): string[] {
   const out: string[] = [];
   for (const t of tokens) {
@@ -402,9 +424,7 @@ function hasLeadingAwsAssignment(tokens: string[]): boolean {
     if (/^AWS_[A-Za-z0-9_]+=/.test(t)) return true;
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) continue;
     if (t.startsWith('-')) {
-      const eq = t.indexOf('=');
-      const base = eq >= 0 ? t.slice(0, eq) : t;
-      if (eq < 0 && WRAPPER_VALUE_FLAGS[wrapper]?.has(base)) i++;
+      if (wrapperFlagConsumesNext(wrapper, t)) i++;
       continue;
     }
     if (CONTROL_KEYWORDS.has(t)) continue;
